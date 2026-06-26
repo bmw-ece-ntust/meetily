@@ -1,21 +1,21 @@
 # Meetily
 
-Privacy-First AI Meeting Assistant
+Cloud-First AI Meeting Assistant
 
-Open Source • Privacy-First • Cloud-Ready
+Open Source • Privacy-Aware • Cloud-Ready
 
-A privacy-first AI meeting assistant that captures, transcribes, and summarizes meetings. Built with data sovereignty in mind - process locally or connect to your preferred cloud provider. Perfect for professionals who need meeting intelligence with full control over their data.
+An AI meeting assistant that captures, transcribes, and summarizes meetings using cloud-based speech-to-text services. Connect to OpenAI-compatible APIs for accurate transcription and AI-powered summaries.
 
 ---
 
 ## Features
 
-- **Flexible Transcription:** Choose between local processing or cloud-based OpenAI-compatible APIs
+- **Cloud-First Transcription:** Connect to OpenAI-compatible STT APIs for accurate transcription
 - **Real-time Transcription:** Get live transcripts as your meeting happens
 - **AI-Powered Summaries:** Generate meeting summaries using your preferred AI provider
 - **Multi-Platform:** Works on macOS, Windows, and Linux
 - **Open Source:** Free to use and modify
-- **Multiple AI Providers:** Support for Ollama (local), Claude, Groq, OpenRouter, or custom OpenAI-compatible endpoints
+- **Multiple AI Providers:** Support for Claude, Groq, OpenRouter, or custom OpenAI-compatible endpoints
 
 ## Installation
 
@@ -46,9 +46,9 @@ pnpm tauri build
 
 ## Key Features
 
-### Flexible Transcription
+### Cloud-Based Transcription
 
-Choose your transcription approach - process locally or connect to cloud APIs for enhanced accuracy.
+Connect to any OpenAI-compatible speech-to-text API for accurate, real-time transcription.
 
 ### Import & Enhance
 
@@ -56,11 +56,7 @@ Import existing audio files to generate transcripts or re-transcribe recorded me
 
 ### AI-Powered Summaries
 
-Generate meeting summaries with your choice of AI provider. Supports Ollama (local), Claude, Groq, OpenRouter, and OpenAI-compatible endpoints.
-
-### Privacy-First Design
-
-All data stays on your machine. Recordings and transcripts are stored locally with optional cloud processing.
+Generate meeting summaries with your choice of AI provider. Supports Claude, Groq, OpenRouter, and OpenAI-compatible endpoints.
 
 ### Custom OpenAI Endpoint Support
 
@@ -87,10 +83,3 @@ We welcome contributions from the community! If you have questions or suggestion
 ## License
 
 MIT License - Feel free to use this project for your own purposes.
-
-## Acknowledgments
-
-- Code borrowed from Whisper.cpp
-- Code borrowed from Screenpipe
-- Code borrowed from transcribe-rs
-- Thanks to NVIDIA for the Parakeet model
