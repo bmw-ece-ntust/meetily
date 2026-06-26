@@ -1,5 +1,17 @@
 @CLAUDE.md
 
+## Working Agreement (read first)
+
+- **No push without explicit permission.** Never `git push` until the user
+  says "push", "ship it", or equivalent. Default: commit locally, then wait.
+  This applies to every remote (KagChi/meetily, upstream, anything else).
+- **No public write without explicit permission.** Same rule for `gh issue
+  comment` / PATCH and any other public artifact. Default: draft locally,
+  show the user, wait for "post" / "send it".
+- **Ask before documenting to AGENTS.md or the #812 thread.** If you want
+  to record a new rule, format, or behavior, ask first ("should I
+  document this?"). The user curates.
+
 ## Internship Track
 
 Active todo: see `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/daily-logs/08_MeetingAgent.md`
@@ -83,11 +95,12 @@ Sync in lockstep with the Daily-Logs Sync Rule:
    mentors' log of progress. The only narrow exception is a comment posted
    within the last few minutes with no replies and nothing depending on its
    id; even then, prefer edit.
-5. **Ask before documenting**: before adding a new rule, format, or
-   behavior to this file or to `AGENTS.md` in general, **ask the user
-   first** ("should I document this?"). Do not assume the behavior is
-   worth persisting — the user curates the agent-facing rules and may
-   want the change kept as a one-off instead.
+5. **Ask before documenting to the issue**: before posting a new comment to
+   #812 that documents a decision, rule, format, or piece of behavior,
+   **ask the user first** ("should I document this on #812?"). The user
+   curates the public thread and may want the change kept as a one-off
+   instead. This applies to new comments, not to PATCHes fixing an
+   already-posted comment (step 4 covers that case).
 
 When a fresh session lands on this branch, the first action is: read
 `AGENTS.md`, scan `.opencode/plans/`, read the source todo, scan the last 3
