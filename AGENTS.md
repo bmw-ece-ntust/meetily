@@ -82,6 +82,12 @@ Comment format (matches the existing daily-log pattern in the thread):
 - <relevant URLs — todo, study notes, plan files, this repo's HEAD>
 ```
 
+**Comment content guidelines:**
+- Use commit-based timestamps from `git log` for accuracy
+- Include only code changes and technical work (no planning/discussion unless it resulted in code)
+- Reference the BMW upstream repo (`bmw-ece-ntust/meetily`) in all workspace links, not personal forks
+- Keep format minimal: date, goal, time ranges with brief descriptions, links
+
 Sync in lockstep with the Daily-Logs Sync Rule:
 
 1. **Code complete → comment**: when you flip items in the extern todo, post
@@ -101,6 +107,13 @@ Sync in lockstep with the Daily-Logs Sync Rule:
    mentors' log of progress. The only narrow exception is a comment posted
    within the last few minutes with no replies and nothing depending on its
    id; even then, prefer edit.
+   
+   **Single-PATCH correction workflow:** When you need to make multiple
+   corrections to the same comment (iterative feedback from the user), PATCH
+   the same comment multiple times in sequence. Do not create multiple new
+   comments or ask whether to post a correction comment — just PATCH the
+   existing one directly. Use the same comment ID for all iterations until
+   the user is satisfied with the result.
 5. **Ask before documenting to the issue**: before posting a new comment to
    #812 that documents a decision, rule, format, or piece of behavior,
    **ask the user first** ("should I document this on #812?"). The user
