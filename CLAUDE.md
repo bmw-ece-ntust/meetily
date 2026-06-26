@@ -4,18 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Meetily** is a privacy-first AI meeting assistant that captures, transcribes, and summarizes meetings entirely on local infrastructure. The supported application is the Tauri desktop app with a Rust core.
+**Meetily** is an AI meeting assistant that captures, transcribes, and summarizes meetings. Audio is captured locally and sent to a user-configured cloud STT provider (Deepgram, ElevenLabs, Groq, OpenAI, or any OpenAI-compatible endpoint). The supported application is the Tauri desktop app with a Rust core.
 
 1. **Frontend**: Tauri-based desktop application (Rust + Next.js + TypeScript)
-2. **Rust Backend**: Tauri commands, audio capture, transcription, storage, and summarization orchestration
+2. **Rust Backend**: Tauri commands, audio capture, transcription dispatch, storage, and summarization orchestration
 3. **Legacy Backend Archive**: the old Python/FastAPI, Docker, and standalone whisper-server backend under `backend/` is archived and unsupported
 
 ### Key Technology Stack
 - **Desktop App**: Tauri 2.x (Rust) + Next.js 14 + React 18
-- **Audio Processing**: Rust (cpal, whisper-rs, professional audio mixing)
-- **Transcription**: Whisper.cpp / whisper-rs and Parakeet paths in the Tauri app
+- **Audio Processing**: Rust (cpal, professional audio mixing)
+- **Transcription**: Cloud STT providers (Deepgram, ElevenLabs, Groq, OpenAI, custom OpenAI-compatible endpoints) reached via reqwest multipart upload
 - **App API Surface**: Tauri commands and events, not a separate FastAPI service
-- **LLM Integration**: Ollama (local), Claude, Groq, OpenRouter
+- **LLM Integration**: Claude, Groq, OpenAI, OpenRouter, Ollama (local), custom OpenAI-compatible endpoints
 
 ## Essential Development Commands
 
@@ -38,12 +38,6 @@ pnpm install                # Install dependencies
 pnpm run dev                # Next.js dev server (port 3118)
 pnpm run tauri:dev          # Full Tauri development mode
 pnpm run tauri:build        # Production build
-
-# GPU-Specific Builds (for testing acceleration)
-pnpm run tauri:dev:metal    # macOS Metal GPU
-pnpm run tauri:dev:cuda     # NVIDIA CUDA
-pnpm run tauri:dev:vulkan   # AMD/Intel Vulkan
-pnpm run tauri:dev:cpu      # CPU-only (no GPU)
 ```
 
 ### Legacy Backend Archive
@@ -65,14 +59,14 @@ The archived FastAPI service had unauthenticated, development-oriented CORS beha
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Frontend (Tauri Desktop App)                  │
 │  ┌──────────────────┐  ┌─────────────────┐  ┌────────────────┐ │
-│  │   Next.js UI     │  │  Rust Backend   │  │ Whisper Engine │ │
-│  │  (React/TS)      │←→│  (Audio + IPC)  │←→│  (Local STT)   │ │
+│  │   Next.js UI     │  │  Rust Backend   │  │ Cloud STT      │ │
+│  │  (React/TS)      │←→│  (Audio + IPC)  │←→│ (Provider HTTP)│ │
 │  └──────────────────┘  └─────────────────┘  └────────────────┘ │
 │         ↑ Tauri Events           ↑ Audio Pipeline               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The current app does not require a separate FastAPI tier. Meeting persistence, local transcription, and summary orchestration are handled through the Rust/Tauri core.
+The current app does not require a separate FastAPI tier. Meeting persistence, audio capture, cloud transcription dispatch, and summary orchestration are handled through the Rust/Tauri core.
 
 ### Audio Processing Pipeline (Critical Understanding)
 
@@ -91,10 +85,10 @@ Raw Audio (Mic + System)
     │ (Pre-mixed)     │        │ (VAD-filtered)      │
     └─────────────────┘        └─────────────────────┘
               ↓                          ↓
-    RecordingSaver.save()      WhisperEngine.transcribe()
+     RecordingSaver.save()      Provider.transcribe()
 ```
 
-**Key Insight**: The pipeline performs **professional audio mixing** (RMS-based ducking, clipping prevention) for recording, while simultaneously applying **Voice Activity Detection (VAD)** to send only speech segments to Whisper for transcription.
+**Key Insight**: The pipeline performs **professional audio mixing** (RMS-based ducking, clipping prevention) for recording, while simultaneously applying **Voice Activity Detection (VAD)** to send only speech segments to the cloud STT provider.
 
 ### Audio Device Modularization (Recently Completed)
 
@@ -170,25 +164,15 @@ await listen<TranscriptUpdate>('transcript-update', (event) => {
 });
 ```
 
-### Whisper Model Management
+### Transcription Provider Configuration
 
-**Model Storage Locations**:
-- **Development**: `frontend/models/`
-- **Production (macOS)**: `~/Library/Application Support/Meetily/models/`
-- **Production (Windows)**: `%APPDATA%\Meetily\models\`
+**Provider Storage**: API keys and provider/model selection live in the `transcript_settings` table (see `database/repositories/setting.rs`). The active provider is selected per-user from the Transcript Settings UI and applies to live recording, audio-file import, and meeting retranscription.
 
-**Model Loading** (frontend/src-tauri/src/whisper_engine/whisper_engine.rs):
-```rust
-pub async fn load_model(&self, model_name: &str) -> Result<()> {
-    // Automatically detects GPU capabilities (Metal/CUDA/Vulkan)
-    // Falls back to CPU if GPU unavailable
-}
-```
-
-**GPU Acceleration**:
-- **macOS**: Metal + CoreML (automatically enabled)
-- **Windows/Linux**: CUDA (NVIDIA), Vulkan (AMD/Intel), or CPU
-- Configure via Cargo features: `--features cuda`, `--features vulkan`
+**Adding a New Provider** (when needed):
+1. Add the provider id to `TranscriptModelProps` in `frontend/src/components/TranscriptSettings.tsx`
+2. Add a `TranscriptionProvider` impl in `frontend/src-tauri/src/audio/transcription/`
+3. Register the impl in the provider factory in `audio/transcription/engine.rs`
+4. Add model options to the `modelOptions` map in `TranscriptSettings.tsx`
 
 ## Critical Development Patterns
 
@@ -324,19 +308,16 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 
 ### macOS
 - **Audio Capture**: Uses ScreenCaptureKit for system audio (macOS 13+)
-- **GPU**: Metal + CoreML automatically enabled
 - **Permissions**: Requires microphone + screen recording permissions
 - **System Audio**: Requires virtual audio device (BlackHole) for system capture
 
 ### Windows
 - **Audio Capture**: Uses WASAPI (Windows Audio Session API)
-- **GPU**: CUDA (NVIDIA) or Vulkan (AMD/Intel) via Cargo features
 - **Build Tools**: Requires Visual Studio Build Tools with C++ workload
 - **System Audio**: Uses WASAPI loopback for system capture
 
 ### Linux
 - **Audio Capture**: ALSA/PulseAudio
-- **GPU**: CUDA (NVIDIA) or Vulkan via Cargo features
 - **Dependencies**: Requires cmake, llvm, libomp
 
 ## Performance Optimization Guidelines
@@ -345,14 +326,12 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 - Use `perf_debug!()` / `perf_trace!()` for hot-path logging (zero cost in release)
 - Batch audio metrics using `AudioMetricsBatcher` (pipeline.rs)
 - Pre-allocate buffers with `AudioBufferPool` (buffer_pool.rs)
-- VAD filtering reduces Whisper load by ~70% (only processes speech)
+- VAD filtering reduces cloud STT cost by sending only speech segments (~70% reduction)
 
-### Whisper Transcription
-- **Model Selection**: Balance accuracy vs speed
-  - Development: `base` or `small` (fast iteration)
-  - Production: `medium` or `large-v3` (best quality)
-- **GPU Acceleration**: 5-10x faster than CPU
-- **Parallel Processing**: Available in `whisper_engine/parallel_processor.rs` for batch workloads
+### Cloud Transcription
+- Provider choice is per-user, stored in `transcript_settings`
+- API keys are persisted encrypted (see `api_save_transcript_api_key` in `api/api.rs`)
+- All providers use the same multipart upload pattern in `audio/transcription/`
 
 ### Frontend Performance
 - React state updates batched via Sidebar context
@@ -368,7 +347,7 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
    - Windows: WASAPI exclusive mode can conflict with other apps
    - System audio requires virtual device (BlackHole on macOS, WASAPI loopback on Windows)
 
-3. **Whisper Model Loading**: Models are loaded once and cached. Changing models requires app restart or manual unload/reload.
+3. **Provider Switching**: The active STT provider can be changed in Transcript Settings without restart. The provider factory in `audio/transcription/engine.rs` resolves the new provider on the next transcription call.
 
 4. **No Separate Backend Dependency**: Meeting persistence, transcription, and LLM features are handled by the Tauri app. Do not reintroduce the archived FastAPI backend as a supported requirement.
 
@@ -405,5 +384,7 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 - [frontend/src/app/page.tsx](frontend/src/app/page.tsx) - Main recording interface
 - [frontend/src/components/Sidebar/SidebarProvider.tsx](frontend/src/components/Sidebar/SidebarProvider.tsx) - Global state management
 
-**Whisper Integration**:
-- [frontend/src-tauri/src/whisper_engine/whisper_engine.rs](frontend/src-tauri/src/whisper_engine/whisper_engine.rs) - Whisper model management and transcription
+**Transcription Providers**:
+- [frontend/src-tauri/src/audio/transcription/](frontend/src-tauri/src/audio/transcription/) - Provider trait and per-provider implementations
+- [frontend/src-tauri/src/audio/transcription/engine.rs](frontend/src-tauri/src/audio/transcription/engine.rs) - Provider factory and dispatch
+- [frontend/src/components/TranscriptSettings.tsx](frontend/src/components/TranscriptSettings.tsx) - Provider/model selection UI

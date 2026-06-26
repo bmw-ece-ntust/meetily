@@ -1,7 +1,7 @@
 # Phase 3 — Remove Local Transcription Dependencies
 
 End state: no `whisper_engine` / `parakeet_engine` code paths reachable from
-production builds, no model download/storage, no local-model UI.
+production builds, no model download/storage, no local-model UI. **Keep all existing cloud providers** (`deepgram`, `elevenLabs`, `groq`, `openai`) intact.
 
 **Source todo** (track completion here):
 `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/daily-logs/08_MeetingAgent.md`
@@ -9,6 +9,15 @@ production builds, no model download/storage, no local-model UI.
 
 **Study notes** (architecture context):
 `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/study-notes/14_Meetily_Cloud_First_Transcription.md`
+
+## Architecture Decision
+
+**Multi-provider model** (matches LLM system):
+- Remove: `localWhisper`, `parakeet` (local providers)
+- Keep: `deepgram`, `elevenLabs`, `groq`, `openai` (existing cloud providers)
+- Add in Phase 4: `customStt` (7th provider for any OpenAI-compatible endpoint)
+
+Users can switch providers on-the-fly via the dropdown.
 
 ## Files to read first (read-only, before any delete)
 
@@ -19,28 +28,66 @@ production builds, no model download/storage, no local-model UI.
 - `frontend/src-tauri/Cargo.toml` — find whisper-rs, ONNX runtime, Metal/CUDA/Vulkan features, model-download crates
 - `frontend/src/components/TranscriptSettings.tsx`, `WhisperModelManager.tsx`, `ParakeetModelManager.tsx`, `useTranscriptionModels.ts`, `lib/whisper.ts`
 
-## Decisions needed before editing
+## Decisions (resolved)
 
-- DB schema: keep `transcript_settings` table but constrain `provider` to a single value (`customStt`), or drop the table entirely and use a new minimal one?
-- Single replacement provider or multi (Custom + OpenAI + Groq + Deepgram)? Cloud-first implies single HTTP backend for simplicity — confirm.
-- What does `api_save_model_config.whisper_model` (legacy string field) become — `null`/`""`, or alias it to the custom STT `model` field?
+- DB schema: **Keep `transcript_settings` table**, just remove `localWhisper`/`parakeet` logic. Existing cloud provider columns stay.
+- Providers: **Multi-provider** — keep existing cloud providers, add `customStt` in Phase 4.
+- Legacy `whisper_model` field: Set to `null` when migrating away from local providers.
 
 ## Work
 
-- [ ] Delete `frontend/src-tauri/src/whisper_engine/` and `parakeet_engine/` directories.
-- [ ] Remove `whisper_*` and `parakeet_*` Tauri command registrations from `lib.rs:558-597` and `:571-584`.
-- [ ] In `audio/transcription/engine.rs`, reduce `TranscriptionEngine` enum to a single variant (or `Provider(HttpSttProvider)`), and route `localWhisper | _ =>` arm in `get_or_init_transcription_engine` to it.
-- [ ] Delete `WhisperProvider` and `ParakeetProvider` impls; the `TranscriptionProvider` trait stays.
-- [ ] `Cargo.toml`: drop whisper-rs, ONNX runtime, model-download crates, Metal/CUDA/Vulkan feature flags. Audit transitive build-script deps.
-- [ ] Drop the `app_data/models/` and `app_data/models/parakeet/` directory-creation in `set_models_directory` / `parakeet_engine.rs:126-146`; no replacement.
-- [ ] DB migration: in `database/repositories/setting.rs`, drop whisper/parakeet-specific INSERT branches in `save_transcript_config` (`:153-173`); keep the row but only allow `customStt` provider.
-- [ ] Frontend: collapse `TranscriptSettings.tsx` provider `<Select>` to one option; delete `WhisperModelManager.tsx`, `ParakeetModelManager.tsx`, `ModelDownloadProgress.tsx`, `useTranscriptionModels.ts`; strip `WhisperAPI` from `lib/whisper.ts` (delete the file if it becomes empty).
-- [ ] Update `docs/architecture.md` STT section to cloud-only.
-- [ ] Update `docs/BUILDING.md` — drop model-download/build steps.
-- [ ] Update `.github/workflows/*` — drop model-cache steps.
+### Backend (Rust)
+- [x] Delete `frontend/src-tauri/src/whisper_engine/` directory (8 files, ~109KB).
+- [x] Delete `frontend/src-tauri/src/parakeet_engine/` directory.
+- [x] Remove `whisper_*` and `parakeet_*` Tauri command registrations from `lib.rs`.
+- [x] In `audio/transcription/engine.rs`, remove `localWhisper` branch from `get_or_init_transcription_engine`; route to error or placeholder.
+- [x] Delete `WhisperProvider` and `ParakeetProvider` trait impls from `audio/transcription/provider.rs` (keep the trait itself).
+- [x] `Cargo.toml`: remove whisper-rs, ONNX runtime, model-download crates, Metal/CUDA/Vulkan feature flags.
+- [x] Remove `app_data/models/` and `app_data/models/parakeet/` directory-creation logic.
 
-## Verification after each step
+### Database
+- [x] In `database/repositories/setting.rs`, remove `"localWhisper"` and `"parakeet"` branches from `save_transcript_api_key` (`:180-192`).
+- [x] Keep `transcript_settings` table structure intact (existing cloud provider columns stay).
 
-- `pnpm tauri build` (or `cargo check` for Rust-only edits) compiles clean.
-- `rg -i "whisper|parakeet" frontend/src frontend/src-tauri/src` returns only intentional references (e.g. UI labels being removed).
-- Frontend starts; no console errors about missing Tauri commands.
+### Frontend (TypeScript/React)
+- [x] In `TranscriptSettings.tsx`, remove `<SelectItem value="localWhisper">` and `<SelectItem value="parakeet">` from dropdown.
+- [x] Remove conditional rendering for `localWhisper` and `parakeet`.
+- [x] Delete `WhisperModelManager.tsx` component.
+- [x] Delete `ParakeetModelManager.tsx` component.
+- [x] Delete `ModelDownloadProgress.tsx`.
+- [x] Delete `useTranscriptionModels.ts` hook.
+- [x] Delete `lib/whisper.ts` and `lib/parakeet.ts`.
+- [x] Update `TranscriptModelProps` type to remove `'localWhisper' | 'parakeet'`.
+- [x] Uncomment existing cloud providers in `TranscriptSettings.tsx`.
+- [x] Add Save button to `TranscriptSettings.tsx` (was missing — provider/model/apiKey never persisted to backend).
+- [x] Wire `api_save_transcript_config` + emit `transcript-config-updated` event.
+- [x] Fix `api_get_transcript_config` fallback: `parakeet`/`DEFAULT_PARAKEET_MODEL` → `deepgram`/`nova-2`.
+- [x] Update `useModalState.ts`: drop `model-download-complete` listener (no local model downloads).
+- [x] Update `LanguageSelection.tsx`: drop `isParakeet` branch, narrow `provider` type to cloud-only.
+- [x] Default providers in `ConfigContext.tsx`, `Sidebar/index.tsx`, `settings/page.tsx`: `parakeet` → `deepgram`.
+- [x] `TranscriptPanel.tsx`: Language button always visible (was gated to `localWhisper`).
+
+### Documentation
+- [x] Update `docs/architecture.md` STT section to reflect cloud-only approach.
+- [x] Delete `docs/GPU_ACCELERATION.md` (entirely about whisper-rs).
+- [x] Update `frontend/README.md` features list — cloud STT instead of local Whisper.
+- [x] Update `CLAUDE.md` Project Overview, tech stack, architecture diagram, pipeline, gotchas.
+- [x] Replace `frontend/API.md` (was legacy whisper-server archive marker).
+- [x] Update `frontend/src-tauri/LOGGING_OPTIMIZATIONS.md` (removed whisper_engine-specific refs).
+
+### Build / scripts
+- [x] Strip GPU-specific npm scripts (`tauri:dev:metal`, `tauri:build:metal`, etc.).
+- [x] Delete GPU build/dev wrappers (`build-gpu.{bat,ps1,sh}`, `dev-gpu.{bat,ps1,sh}`, `build_backup.bat`).
+- [x] Delete `scripts/auto-detect-gpu.js`.
+- [x] Simplify `scripts/tauri-auto.js` (no auto-detection).
+- [x] Migrate `build.bat`/`build.ps1` to pnpm + non-GPU build target.
+- [x] Delete `backend/` directory (legacy Python/FastAPI archive, unsupported per its README).
+- [x] Re-add `zip`/`tar`/`xz2` build-deps to `Cargo.toml` (needed by `build/ffmpeg.rs`, not Whisper).
+- [x] Strip GPU-detection from `build.rs`.
+- [x] Remove `externalBin` llama-helper from `tauri.conf.json` (local LLM sidecar not used).
+
+### Verification
+- [x] `cargo check`: 0 errors, 5 cosmetic warnings.
+- [x] `npx tsc --noEmit`: 0 errors (one pre-existing `bun:test` import in orphaned test, not in build path).
+- [x] `npx next build`: 11/11 static pages generated, 0 errors.
+- [x] `rg -i "whisper|parakeet" frontend/src frontend/src-tauri/src`: only intentional references (CLAUDE.md historical context, comment-only mentions in post_processor.rs, lib_old_complex.rs legacy).

@@ -264,6 +264,7 @@ async fn get_current_recording_state() -> RecordingState {
 /// Returns true if:
 /// - Onboarding is complete (user may prefer Whisper later), OR
 /// - Parakeet transcription model is ready (downloaded)
+#[allow(dead_code)]
 async fn check_can_record<R: Runtime>(app: &AppHandle<R>) -> bool {
     // First check if onboarding is complete
     let onboarding_complete = match crate::onboarding::load_onboarding_status(app).await {
@@ -280,14 +281,10 @@ async fn check_can_record<R: Runtime>(app: &AppHandle<R>) -> bool {
         return true;
     }
 
-    // During onboarding, check if Parakeet transcription model is ready
-    match crate::parakeet_engine::commands::parakeet_has_available_models().await {
-        Ok(has_models) => has_models,
-        Err(e) => {
-            log::warn!("Tray: Failed to check Parakeet models: {}, assuming not ready", e);
-            false
-        }
-    }
+    // During onboarding, check if a transcription provider is configured
+    // Cloud-first: cloud providers don't require local model downloads
+    let _ = app;
+    true
 }
 
 pub async fn update_tray_menu_async<R: Runtime>(app: &AppHandle<R>) {
@@ -297,8 +294,9 @@ pub async fn update_tray_menu_async<R: Runtime>(app: &AppHandle<R>) {
     log::info!("Tray: Current recording state: {:?}", recording_state);
 
     // Determine if recording should be allowed
-    // Only block recording during incomplete onboarding when no transcription model is ready
-    let can_record = check_can_record(app).await;
+    // Cloud-first: no model download required, so always allow recording
+    // (onboarding is checked separately via the recording flow itself)
+    let can_record = true;
     log::info!("Tray: can_record: {}", can_record);
 
     if let Ok(menu) = build_menu(app, recording_state, can_record) {

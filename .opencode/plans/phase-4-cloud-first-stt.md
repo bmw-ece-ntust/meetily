@@ -1,8 +1,6 @@
 # Phase 4 — Implement Cloud-First Transcription
 
-End state: a single `HttpSttProvider` (mirror of `LLMProvider::CustomOpenAI` at
-`summary/llm_client.rs:75-180`) handles all STT by POSTing
-`multipart/form-data` to `{endpoint}/v1/audio/transcriptions`.
+End state: add `customStt` as a **7th provider option** (alongside `deepgram`, `elevenLabs`, `groq`, `openai`) that allows users to configure any OpenAI-compatible `/v1/audio/transcriptions` endpoint. Mirrors the `CustomOpenAI` pattern from the LLM system.
 
 **Source todo** (track completion here):
 `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/daily-logs/08_MeetingAgent.md`
@@ -19,23 +17,49 @@ End state: a single `HttpSttProvider` (mirror of `LLMProvider::CustomOpenAI` at
 - `frontend/src-tauri/src/lib.rs:657-659` — Tauri command registration site
 - `frontend/src/components/ModelSettingsModal.tsx:948-1019` — Custom-OpenAI sub-form pattern to mirror
 
+## Architecture
+
+**Add `customStt` as 7th provider** (not a replacement):
+- Existing: `deepgram`, `elevenLabs`, `groq`, `openai` (keep these intact)
+- New: `customStt` — user-configurable OpenAI-compatible endpoint
+
 ## New types / code to add
 
-- [ ] `CustomSttConfig` struct (`endpoint`, `api_key`, `model`, `response_format`, `language`?) in a new `frontend/src-tauri/src/stt/mod.rs`.
-- [ ] `HttpSttProvider` impl of `TranscriptionProvider` trait (`audio/transcription/provider.rs:49-73`) — POSTs `multipart/form-data` to `{endpoint}/v1/audio/transcriptions` with `file`, `model`, optional `language`, `prompt`, `temperature`, `response_format="json"`. Parses `{"text": "..."}`.
-- [ ] Tauri commands: `api_save_custom_stt_config`, `api_get_custom_stt_config`, `api_test_custom_stt_connection` (mirror the custom-openai triplet exactly; reuse error format).
-- [ ] DB: new columns in `transcript_settings` (currently `id, provider, model, per-provider key columns` at `setting.rs:160-187`) — add `customSttEndpoint`, `customSttModel`, `customSttConfig` JSON column. Migration step needed.
-- [ ] Reqwest client: confirm in `Cargo.toml` (should already be present, used by `openai/openai.rs:127`).
+### Backend (Rust)
+- [ ] `CustomSttConfig` struct in new `frontend/src-tauri/src/stt/mod.rs`:
+  - `endpoint: String` (e.g., `"http://localhost:8000/v1"`)
+  - `api_key: Option<String>`
+  - `model: String` (e.g., `"whisper-1"`, `"large-v3"`)
+  - Optional: `language`, `temperature`, `response_format`
+- [ ] `CustomSttProvider` impl of `TranscriptionProvider` trait:
+  - POSTs `multipart/form-data` to `{endpoint}/v1/audio/transcriptions`
+  - Fields: `file`, `model`, optional `language`, `prompt`, `temperature`
+  - Parses `{"text": "..."}` response
+- [ ] Tauri commands (mirror custom-openai pattern):
+  - `api_save_custom_stt_config`
+  - `api_get_custom_stt_config`
+  - `api_test_custom_stt_connection`
+- [ ] DB: Add `customSttConfig` JSON column to `transcript_settings` table
+- [ ] Update `audio/transcription/engine.rs` to handle `customStt` provider case
 
-## Frontend
-
-- [ ] `TranscriptSettings.tsx`: add `<SelectItem value="customStt">` and a sub-form (mirror the Custom-OpenAI UI at `ModelSettingsModal.tsx:948-1019`): endpoint, model, API key, optional advanced.
-- [ ] Hook: `useCustomSttConfig()` parallel to existing custom-openai hooks.
-- [ ] `ConfigContext.tsx`: surface `customStt` config to the rest of the app.
+### Frontend (TypeScript/React)
+- [ ] Add `customStt` to `TranscriptModelProps` provider union type
+- [ ] In `TranscriptSettings.tsx`, add `<SelectItem value="customStt">🔧 Custom STT</SelectItem>` at top of dropdown
+- [ ] Add conditional sub-form when `provider === 'customStt'` (mirror `ModelSettingsModal.tsx:948-1019`):
+  - Endpoint URL input (required)
+  - Model name input (required)
+  - API key input (optional, type="password")
+  - Advanced options (collapsible): temperature, language, etc.
+  - Test connection button
+- [ ] Create hook `useCustomSttConfig()` to manage state and API calls
+- [ ] Update `ConfigContext.tsx` to surface custom STT config
 
 ## Verification
 
-- Test against an OpenAI-compatible STT endpoint (e.g. `faster-whisper-server`, `whisper.cpp --server`).
-- Test against OpenAI's `api.openai.com/v1/audio/transcriptions` with a real key.
-- Test with no key (local server) — header should be optional.
-- Failure modes: bad endpoint, 401, 429, malformed multipart, slow response (timeout), non-JSON response.
+- [ ] Test against local `faster-whisper-server` (`http://localhost:8000/v1`)
+- [ ] Test against OpenAI's hosted endpoint (`https://api.openai.com/v1`)
+- [ ] Test against Groq's OpenAI-compatible endpoint
+- [ ] Test with no API key (local server without auth)
+- [ ] Test error handling: bad endpoint, 401, 429, timeout, malformed response
+- [ ] Verify audio format compatibility (existing pipeline should work)
+- [ ] Test provider switching: switch from `customStt` → `openai` → `deepgram` → back to `customStt`
