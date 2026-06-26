@@ -14,11 +14,14 @@
 
 ## Internship Track
 
-Active todo: see `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/daily-logs/08_MeetingAgent.md`
-(on branch `2026-TEEP-5-Samuel`). 7-phase cloud-first rework of Meetily — drop
-local Whisper/Parakeet, route all STT through an OpenAI-compatible API. Study
-notes companion:
-`/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/study-notes/14_Meetily_Cloud_First_Transcription.md`.
+**Two-repo structure:**
+- **Extern repo** (`/Users/kagchi/Documents/projects/bmw-ntust-internship`, branch `2026-TEEP-5-Samuel`): Source of truth for todo, study notes, daily logs
+- **Meetily workspace** (this repo, branch `main`): Implementation, plan files, code changes
+
+**Local workspace files (bidirectional sync with extern):**
+- Active work: `.opencode/ACTIVE.md`
+- Todo: `.opencode/TODO.md` ↔ `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/daily-logs/08_MeetingAgent.md`
+- Notes: `.opencode/NOTES.md` ↔ `/Users/kagchi/Documents/projects/bmw-ntust-internship/docs/study-notes/14_Meetily_Cloud_First_Transcription.md`
 
 ## Active Plans
 
