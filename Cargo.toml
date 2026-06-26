@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "frontend/src-tauri"
+    "frontend/src-tauri",
+    "server"
 ]
 
 # Shared workspace settings
