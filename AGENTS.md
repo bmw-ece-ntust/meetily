@@ -40,6 +40,49 @@ Sync both directions, in this order:
    re-scoped, items added/removed), mirror the change in the affected phase
    file.
 
+## Issues Sync Rule (mandatory)
+
+The intern's daily log lives as a comment thread on
+[bmw-ntust-internship/internship issue #812](https://github.com/bmw-ntust-internship/internship/issues/812).
+Whenever you complete a meaningful chunk of work on this branch, you **must**
+post a continuation comment to that thread describing what was done. The
+comment is public, so do not post secrets, internal paths beyond the repo
+root, or anything you would not want the lab mentors to read.
+
+Comment format (matches the existing daily-log pattern in the thread):
+
+```
+# YYYY/MM/DD
+
+## Short-term Goals
+#### <one-line summary of this session's slice>
+
+**Daily Logs:**
+- HH:MM-HH:MM <what you did, with concrete file/function pointers>
+
+**Links:**
+- <relevant URLs — todo, study notes, plan files, this repo's HEAD>
+```
+
+Sync in lockstep with the Daily-Logs Sync Rule:
+
+1. **Code complete → comment**: when you flip items in the extern todo, post
+   a new comment on #812 in the same turn. Use `gh issue comment 812 --repo
+   bmw-ntust-internship/internship --body-file <tmp>`.
+2. **Comment → plan link**: when you add a new plan file to `.opencode/plans/`
+   that the user should be able to read from the thread, include its GitHub
+   URL in the comment's Links block.
+3. **Daily-log daily**: post at least one comment per working day even if no
+   code changed — a one-liner is fine ("no code changes; planning only").
+4. **Edit in place, never delete**: if a comment needs a fix (wrong time,
+   typo, broken link), edit it in place with the `gh api` PATCH endpoint —
+   `PATCH repos/bmw-ntust-internship/internship/issues/comments/<id>` — do
+   **not** delete and repost. A gap in the thread is a permanent public
+   record of the mistake, and the thread is the lab mentors' log of
+   progress. The exception is a comment posted within the last few minutes
+   with no replies and nothing depending on its id; even then, prefer edit.
+
 When a fresh session lands on this branch, the first action is: read
-`AGENTS.md`, scan `.opencode/plans/`, read the source todo, reconcile any
-drift between them, then proceed.
+`AGENTS.md`, scan `.opencode/plans/`, read the source todo, scan the last 3
+comments on issue #812 to see the most recent context, reconcile any drift
+between them, then proceed.
