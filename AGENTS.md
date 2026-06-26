@@ -6,6 +6,9 @@
   says "push", "ship it", or equivalent. Default: commit locally, then wait.
   This applies to every remote (bmw-ece-ntust/meetily,
   extern bmw-ntust-internship/internship, anything else).
+- **Permission is per-push, never carried.** A prior "yes" — in this session
+  or a previous one — does not authorize the next push. Re-ask before every
+  push; never assume consent carries over.
 - **Origin is `bmw-ece-ntust/meetily` (upstream lab repo).** A push to
   `origin` is a public write to the lab's repo — ask before any push.
 - **No public write without explicit permission.** Same rule for `gh issue
