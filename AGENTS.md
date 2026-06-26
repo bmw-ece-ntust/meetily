@@ -4,7 +4,9 @@
 
 - **No push without explicit permission.** Never `git push` until the user
   says "push", "ship it", or equivalent. Default: commit locally, then wait.
-  This applies to every remote (KagChi/meetily, upstream, anything else).
+  This applies to every remote (KagChi/meetily, upstream
+  bmw-ece-ntust/meetily, extern bmw-ntust-internship/internship, anything
+  else).
 - **Origin is currently `bmw-ece-ntust/meetily` (upstream lab repo), not the
   KagChi fork.** A push to `origin` is a public write to the lab's repo —
   ask before any push and confirm the user wants upstream, not a fork.
@@ -58,6 +60,31 @@ Sync both directions, in this order:
    re-scoped, items added/removed), mirror the change in the affected phase
    file.
 
+## Extern Repo Commit & Push Rule (mandatory)
+
+Edits to the extern repo
+(`/Users/kagchi/Documents/projects/bmw-ntust-internship`, branch
+`2026-TEEP-5-Samuel`) — the source todo, study notes, daily logs — must not
+be left dangling locally. After the Daily-Logs Sync Rule triggers an edit to
+the extern repo, commit and push in the **same turn**, before posting the
+#812 comment:
+
+1. **Commit**: stage the changed extern files and commit with message
+   `chore: update` (matching the existing extern-repo style). Do not craft a
+   long custom message; the #812 comment carries the narrative.
+2. **Push — still requires explicit permission.** The Working Agreement's "No
+   push without explicit permission" applies to the extern repo too. Ask
+   ("extern repo has commits — push to origin/2026-TEEP-5-Samuel?") and wait
+   for the user before `git push`. Default: commit locally, ask, wait.
+3. **#812 links reference the pushed HEAD.** When the Issues Sync Rule posts
+   a comment, any link to extern-repo content (todo, study notes) must point
+   at the **pushed** commit, not a local-only SHA. If the push was deferred,
+   note that in the comment and PATCH the link once pushed.
+
+Rationale: the #812 comment thread and its links are the lab mentors' view of
+progress; a link to unpushed content is a dead link. Keeping the extern remote
+current also prevents drift between the two workspace mirrors.
+
 ## Issues Sync Rule (mandatory)
 
 The intern's daily log lives as a comment thread on
@@ -90,9 +117,12 @@ Comment format (matches the existing daily-log pattern in the thread):
 
 Sync in lockstep with the Daily-Logs Sync Rule:
 
-1. **Code complete → comment**: when you flip items in the extern todo, post
-   a new comment on #812 in the same turn. Use `gh issue comment 812 --repo
-   bmw-ntust-internship/internship --body-file <tmp>`.
+1. **Code complete → comment**: when you flip items in the extern todo, update
+   the #812 thread in the same turn. **One comment per day** — if a comment
+   for today already exists, PATCH it in place to append the new work; only
+   post a new comment (`gh issue comment 812 --repo
+   bmw-ntust-internship/internship --body-file <tmp>`) when no comment exists
+   yet for the current calendar day.
 2. **Comment → plan link**: when you add a new plan file to `.opencode/plans/`
    that the user should be able to read from the thread, include its GitHub
    URL in the comment's Links block.
