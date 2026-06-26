@@ -38,7 +38,7 @@ Build from source following the build documentation in the docs folder.
 Quick start:
 
 ```bash
-git clone https://github.com/KagChi/meetily
+git clone https://github.com/bmw-ece-ntust/meetily
 cd meetily/frontend
 pnpm install
 pnpm tauri build

@@ -4,12 +4,10 @@
 
 - **No push without explicit permission.** Never `git push` until the user
   says "push", "ship it", or equivalent. Default: commit locally, then wait.
-  This applies to every remote (KagChi/meetily, upstream
-  bmw-ece-ntust/meetily, extern bmw-ntust-internship/internship, anything
-  else).
-- **Origin is currently `bmw-ece-ntust/meetily` (upstream lab repo), not the
-  KagChi fork.** A push to `origin` is a public write to the lab's repo —
-  ask before any push and confirm the user wants upstream, not a fork.
+  This applies to every remote (bmw-ece-ntust/meetily,
+  extern bmw-ntust-internship/internship, anything else).
+- **Origin is `bmw-ece-ntust/meetily` (upstream lab repo).** A push to
+  `origin` is a public write to the lab's repo — ask before any push.
 - **No public write without explicit permission.** Same rule for `gh issue
   comment` / PATCH and any other public artifact. Default: draft locally,
   show the user, wait for "post" / "send it".
