@@ -146,4 +146,3 @@ MIT License - Feel free to use this project for your own purposes.
 - Code borrowed from Screenpipe
 - Code borrowed from transcribe-rs
 - Thanks to NVIDIA for the Parakeet model
-- Thanks to istupakov for the ONNX conversion of Parakeet
