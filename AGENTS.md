@@ -103,6 +103,8 @@ Sync in lockstep with the Daily-Logs Sync Rule:
    already-posted comment (step 4 covers that case).
 
 When a fresh session lands on this branch, the first action is: read
-`AGENTS.md`, scan `.opencode/plans/`, read the source todo, scan the last 3
+`AGENTS.md` (which proxies `CLAUDE.md` via the `@CLAUDE.md` token at the top
+— read `CLAUDE.md` next so the project-level build/test/conventions are
+in context), scan `.opencode/plans/`, read the source todo, scan the last 3
 comments on issue #812 to see the most recent context, reconcile any drift
 between them, then proceed.
