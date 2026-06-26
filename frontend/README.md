@@ -61,10 +61,10 @@ A modern desktop application for recording, transcribing, and analyzing meetings
 
 2. Clone the repository and navigate to the frontend directory:
    ```bash
-   git clone https://github.com/Zackriya-Solutions/meeting-minutes
-   cd meeting-minutes/frontend
+   git clone https://github.com/KagChi/meetily
+   cd meetily/frontend
    ```
-  
+   
 
 3. Install dependencies:
    ```bash
@@ -81,8 +81,8 @@ A modern desktop application for recording, transcribing, and analyzing meetings
 
 2. Clone the repository and navigate to the frontend directory:
    ```cmd
-   git clone https://github.com/Zackriya-Solutions/meeting-minutes
-   cd meeting-minutes/frontend
+   git clone https://github.com/KagChi/meetily
+   cd meetily/frontend
    ```
 
 3. Install dependencies:
