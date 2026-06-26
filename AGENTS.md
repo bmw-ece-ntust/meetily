@@ -83,6 +83,11 @@ Sync in lockstep with the Daily-Logs Sync Rule:
    mentors' log of progress. The only narrow exception is a comment posted
    within the last few minutes with no replies and nothing depending on its
    id; even then, prefer edit.
+5. **Ask before documenting**: before adding a new rule, format, or
+   behavior to this file or to `AGENTS.md` in general, **ask the user
+   first** ("should I document this?"). Do not assume the behavior is
+   worth persisting — the user curates the agent-facing rules and may
+   want the change kept as a one-off instead.
 
 When a fresh session lands on this branch, the first action is: read
 `AGENTS.md`, scan `.opencode/plans/`, read the source todo, scan the last 3
