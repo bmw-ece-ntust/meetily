@@ -77,10 +77,12 @@ Sync in lockstep with the Daily-Logs Sync Rule:
 4. **Edit in place, never delete**: if a comment needs a fix (wrong time,
    typo, broken link), edit it in place with the `gh api` PATCH endpoint —
    `PATCH repos/bmw-ntust-internship/internship/issues/comments/<id>` — do
-   **not** delete and repost. A gap in the thread is a permanent public
-   record of the mistake, and the thread is the lab mentors' log of
-   progress. The exception is a comment posted within the last few minutes
-   with no replies and nothing depending on its id; even then, prefer edit.
+   **not** delete and repost. **Default to PATCH for any correction**, even
+   trivial ones (time ranges, single typos, link fixes). A gap in the thread
+   is a permanent public record of the mistake, and the thread is the lab
+   mentors' log of progress. The only narrow exception is a comment posted
+   within the last few minutes with no replies and nothing depending on its
+   id; even then, prefer edit.
 
 When a fresh session lands on this branch, the first action is: read
 `AGENTS.md`, scan `.opencode/plans/`, read the source todo, scan the last 3
