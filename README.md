@@ -142,9 +142,8 @@ MIT License - Feel free to use this project for your own purposes.
 
 ## Acknowledgments
 
-- Code borrowed from [Whisper.cpp](https://github.com/ggerganov/whisper.cpp)
-- Code borrowed from [Screenpipe](https://github.com/mediar-ai/screenpipe)
-- Code borrowed from [transcribe-rs](https://crates.io/crates/transcribe-rs)
-- Thanks to **NVIDIA** for the **Parakeet** model
-- Thanks to [istupakov](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) for the **ONNX conversion** of Parakeet
-- Original project by [Zackriya Solutions](https://github.com/Zackriya-Solutions/meetily)
+- Code borrowed from Whisper.cpp
+- Code borrowed from Screenpipe
+- Code borrowed from transcribe-rs
+- Thanks to NVIDIA for the Parakeet model
+- Thanks to istupakov for the ONNX conversion of Parakeet
