@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
-import { TranscriptModelProps } from '@/components/TranscriptSettings';
 
 export type ModalType =
   | 'modelSettings'
@@ -43,7 +42,7 @@ interface UseModalStateReturn {
  * - Event listeners for chunk drops, transcription errors, model downloads
  * - Auto-close on model download completion
  */
-export function useModalState(transcriptModelConfig?: TranscriptModelProps): UseModalStateReturn {
+export function useModalState(_transcriptModelConfig?: unknown): UseModalStateReturn {
   // Modal visibility state
   const [modals, setModals] = useState<ModalState>({
     modelSettings: false,
@@ -162,32 +161,6 @@ export function useModalState(transcriptModelConfig?: TranscriptModelProps): Use
       }
     };
   }, [showModal]);
-
-  // Listen for model download completion to auto-close modal
-  useEffect(() => {
-    const setupDownloadListeners = async () => {
-      const unlisteners: (() => void)[] = [];
-
-      // Listen for Whisper model download complete
-      const unlistenWhisper = await listen<{ modelName: string }>('model-download-complete', (event) => {
-        const { modelName } = event.payload;
-        console.log('[useModalState] Whisper model download complete:', modelName);
-
-        // Auto-close modal if the downloaded model matches the selected one
-        if (transcriptModelConfig?.provider === 'localWhisper' && transcriptModelConfig?.model === modelName) {
-          toast.success('Model ready! Closing window...', { duration: 1500 });
-          setTimeout(() => hideModal('modelSelector'), 1500);
-        }
-      });
-      unlisteners.push(unlistenWhisper);
-
-      return () => {
-        unlisteners.forEach(unsub => unsub());
-      };
-    };
-
-    setupDownloadListeners();
-  }, [transcriptModelConfig, hideModal]);
 
   return {
     modals,

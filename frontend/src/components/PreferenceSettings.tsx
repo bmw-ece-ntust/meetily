@@ -215,7 +215,7 @@ export function PreferenceSettings() {
 
         <div className="mt-4 p-3 bg-blue-50 rounded-md">
           <p className="text-xs text-blue-800">
-            <strong>Note:</strong> Database and models are stored together in your application data directory for unified management.
+            <strong>Note:</strong> Transcription runs through ai-meeting-agent. Local storage contains app data and recordings only.
           </p>
         </div>
       </div>

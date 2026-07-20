@@ -33,7 +33,7 @@ impl ContinuousVadProcessor {
         // Silero VAD MUST use 16kHz - this is hardcoded requirement
         const VAD_SAMPLE_RATE: u32 = 16000;
 
-        // Use STRICT settings to prevent silence from reaching Whisper
+        // Use STRICT settings to prevent silence from reaching transcription API
         let mut config = VadConfig::default();
         config.sample_rate = VAD_SAMPLE_RATE as usize;
 
@@ -51,8 +51,8 @@ impl ContinuousVadProcessor {
         config.post_speech_pad = Duration::from_millis(400);  // Increased: more context at end
 
         // CRITICAL FIX: Increased min_speech_time to prevent tiny 40ms fragments
-        // Previous: 100ms allowed too-short segments that Whisper rejects
-        // New: 250ms ensures segments are substantial enough for Whisper (>100ms requirement)
+        // Previous: 100ms allowed too-short segments that transcription API rejects
+        // New: 250ms ensures segments are substantial enough for transcription API (>100ms requirement)
         config.min_speech_time = Duration::from_millis(250);  // Prevent tiny fragments
 
         debug!("Creating VAD session with: sample_rate={}Hz, redemption={}ms, min_speech={}ms, input_rate={}Hz",
