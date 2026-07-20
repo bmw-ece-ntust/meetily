@@ -331,9 +331,9 @@ pub async fn api_get_summary<R: Runtime>(
     }
 }
 
-/// Processes transcript and generates summary (Native SQLx implementation)
+/// Processes transcript and generates summary using API client
 ///
-/// Spawns a background task and returns immediately with process_id
+/// Triggers summary generation on ai-meeting-agent and returns job_id for polling
 #[tauri::command]
 pub async fn api_process_transcript<R: Runtime>(
     app: AppHandle<R>,
@@ -353,52 +353,177 @@ pub async fn api_process_transcript<R: Runtime>(
 
     let m_id = meeting_id.unwrap_or_else(|| format!("meeting-{}", Uuid::new_v4()));
     log_info!(
-        "api_process_transcript (native) called for meeting_id: {}, model: {}",
+        "api_process_transcript called for meeting_id: {}, model: {}",
         &m_id,
         &model
     );
 
-    let pool = state.db_manager.pool().clone();
-    let final_prompt = custom_prompt.unwrap_or_else(|| "".to_string());
-    let final_template_id = template_id.unwrap_or_else(|| "daily_standup".to_string());
+    // Parse template from template_id (daily_standup, project_review, etc.)
+    let template = match template_id.as_deref() {
+        Some("key_points") => crate::api_client::types::SummaryTemplate::KeyPoints,
+        Some("action_items") => crate::api_client::types::SummaryTemplate::ActionItems,
+        Some("decisions") => crate::api_client::types::SummaryTemplate::Decisions,
+        _ => crate::api_client::types::SummaryTemplate::Full,
+    };
 
-    // Normalise empty / whitespace-only to None so "" and null behave identically
-    let summary_language = summary_language.and_then(|s| {
+    // Normalize empty/whitespace language to None
+    let language = summary_language.and_then(|s| {
         let t = s.trim();
         if t.is_empty() { None } else { Some(t.to_string()) }
     });
 
-    // Create or reset the process entry in the database
-    SummaryProcessesRepository::create_or_reset_process(&pool, &m_id)
-        .await
-        .map_err(|e| format!("Failed to initialize process: {}", e))?;
+    // Use API client to trigger summary generation
+    let client = state.api_client.read().await;
+    
+    let request = crate::api_client::types::GenerateSummaryRequest {
+        template,
+        language,
+    };
 
-    log_info!("✓ Summary process initialized for meeting_id: {}", &m_id);
+    match client.generate_summary(&m_id, request).await {
+        Ok(response) => {
+            log_info!("Successfully triggered summary generation for meeting {}, job_id: {}", 
+                m_id, response.job_id);
 
-    // Save transcript chunks data (matching Python backend behavior)
-    let chunk_size = _chunk_size.unwrap_or(40000);
-    let overlap = _overlap.unwrap_or(1000);
+            // Spawn background task to poll job status and emit events
+            let app_clone = app.clone();
+            let job_id = response.job_id.clone();
+            let meeting_id_clone = m_id.clone();
+            let client_clone = state.api_client.clone();
+            let cache_clone = state.memory_cache.clone();
 
-    TranscriptChunksRepository::save_transcript_data(
-        &pool,
-        &m_id,
-        &text,
-        &model,
-        &model_name,
-        chunk_size,
-        overlap,
-    )
-    .await
-    .map_err(|e| format!("Failed to save transcript data: {}", e))?;
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = poll_summary_job(
+                    app_clone,
+                    client_clone,
+                    cache_clone,
+                    &job_id,
+                    &meeting_id_clone,
+                ).await {
+                    log_error!("Error polling summary job {}: {}", job_id, e);
+                }
+            });
 
-    log_info!("✓ Transcript chunks saved for meeting_id: {}", &m_id);
+            Ok(ProcessTranscriptResponse {
+                message: "Summary generation started".to_string(),
+                process_id: response.job_id,
+            })
+        }
+        Err(e) => {
+            log_error!("Error triggering summary generation for meeting {}: {}", m_id, e);
+            Err(format!("Failed to start summary generation: {}", e))
+        }
+    }
+}
 
-    // Spawn background task for actual processing
-    let meeting_id_clone = m_id.clone();
-    tauri::async_runtime::spawn(async move {
-        SummaryService::process_transcript_background(
-            app,
-            pool,
+/// Poll summary job status and emit events to frontend
+async fn poll_summary_job<R: Runtime>(
+    app: AppHandle<R>,
+    client: std::sync::Arc<tokio::sync::RwLock<crate::api_client::client::ApiClient>>,
+    cache: crate::api_client::cache::MemoryCache,
+    job_id: &str,
+    meeting_id: &str,
+) -> Result<(), String> {
+    use std::time::Duration;
+
+    log_info!("Starting to poll summary job {}", job_id);
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let client_guard = client.read().await;
+        match client_guard.get_job_status(job_id).await {
+            Ok(status) => {
+                log_debug!("Summary job {} state: {:?}", job_id, status.state);
+
+                // Emit progress event
+                if let Err(e) = app.emit("job-progress", serde_json::json!({
+                    "job_id": job_id,
+                    "job_type": "summary",
+                    "state": format!("{:?}", status.state).to_lowercase(),
+                    "progress": status.progress,
+                    "meeting_id": meeting_id,
+                })) {
+                    log_error!("Failed to emit job-progress event: {}", e);
+                }
+
+                // Check if job is terminal
+                if status.state.is_terminal() {
+                    match status.state {
+                        crate::api_client::types::JobState::Completed => {
+                            log_info!("Summary job {} completed successfully", job_id);
+
+                            // Fetch the generated summary and cache it
+                            drop(client_guard); // Release read lock before async operation
+                            let client_guard = client.read().await;
+                            if let Ok(summaries) = client_guard.list_summaries(meeting_id).await {
+                                cache.set_summaries(meeting_id.to_string(), summaries.summaries).await;
+                            }
+
+                            // Emit completion event
+                            if let Err(e) = app.emit("job-completed", serde_json::json!({
+                                "job_id": job_id,
+                                "job_type": "summary",
+                                "state": "completed",
+                                "meeting_id": meeting_id,
+                            })) {
+                                log_error!("Failed to emit job-completed event: {}", e);
+                            }
+                        }
+                        crate::api_client::types::JobState::Failed => {
+                            log_error!("Summary job {} failed: {:?}", job_id, status.error);
+
+                            // Emit failure event
+                            if let Err(e) = app.emit("job-completed", serde_json::json!({
+                                "job_id": job_id,
+                                "job_type": "summary",
+                                "state": "failed",
+                                "meeting_id": meeting_id,
+                                "error": status.error,
+                            })) {
+                                log_error!("Failed to emit job-completed event: {}", e);
+                            }
+                        }
+                        crate::api_client::types::JobState::Cancelled => {
+                            log_info!("Summary job {} was cancelled", job_id);
+
+                            // Emit cancellation event
+                            if let Err(e) = app.emit("job-completed", serde_json::json!({
+                                "job_id": job_id,
+                                "job_type": "summary",
+                                "state": "cancelled",
+                                "meeting_id": meeting_id,
+                            })) {
+                                log_error!("Failed to emit job-completed event: {}", e);
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    break; // Exit polling loop
+                }
+            }
+            Err(e) => {
+                log_error!("Error polling summary job {}: {}", job_id, e);
+                
+                // Emit error event
+                if let Err(emit_err) = app.emit("job-completed", serde_json::json!({
+                    "job_id": job_id,
+                    "job_type": "summary",
+                    "state": "failed",
+                    "meeting_id": meeting_id,
+                    "error": format!("Polling error: {}", e),
+                })) {
+                    log_error!("Failed to emit job-completed event: {}", emit_err);
+                }
+
+                return Err(format!("Failed to poll job status: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
             meeting_id_clone.clone(),
             text,
             model,
@@ -430,27 +555,21 @@ pub async fn api_cancel_summary<R: Runtime>(
 ) -> Result<serde_json::Value, String> {
     log_info!("api_cancel_summary called for meeting_id: {}", meeting_id);
 
-    // Trigger cancellation via the service
-    let cancelled = SummaryService::cancel_summary(&meeting_id);
+    // Note: We need the job_id to cancel via API, but the frontend only provides meeting_id
+    // For now, we'll need to track active job_ids per meeting_id
+    // This is a limitation - the API requires job_id for cancellation
+    
+    log_warn!("API-based summary cancellation requires job_id tracking (not yet implemented)");
+    log_warn!("Summary will complete or fail naturally");
 
-    if cancelled {
-        // Update database status to cancelled
-        let pool = state.db_manager.pool();
-        if let Err(e) = SummaryProcessesRepository::update_process_cancelled(pool, &meeting_id).await {
-            log_error!("Failed to update DB status to cancelled for {}: {}", meeting_id, e);
-            return Err(format!("Failed to update cancellation status: {}", e));
-        }
-
-        log_info!("Successfully cancelled summary generation for meeting_id: {}", meeting_id);
-        Ok(serde_json::json!({
-            "message": "Summary generation cancelled successfully",
-            "meeting_id": meeting_id,
-        }))
-    } else {
-        log_warn!("No active summary generation found for meeting_id: {}", meeting_id);
-        Ok(serde_json::json!({
-            "message": "No active summary generation to cancel",
-            "meeting_id": meeting_id,
-        }))
-    }
+    Ok(serde_json::json!({
+        "message": "Summary cancellation not yet supported via API (requires job_id tracking)",
+        "meeting_id": meeting_id,
+    }))
 }
+
+// TODO: Implement job_id tracking per meeting_id to enable cancellation
+// Options:
+// 1. Add job_id -> meeting_id mapping in MemoryCache
+// 2. Store active job_id in AppState per meeting
+// 3. Return job_id from api_process_transcript and require frontend to track it
