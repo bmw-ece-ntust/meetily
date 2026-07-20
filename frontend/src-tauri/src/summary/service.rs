@@ -8,7 +8,6 @@ use crate::summary::processor::{
     extract_meeting_name_from_markdown, generate_meeting_summary, language_name_from_code,
 };
 use crate::summary::templates::{self, Template};
-use crate::ollama::metadata::ModelMetadataCache;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::HashMap;
@@ -20,7 +19,18 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use once_cell::sync::Lazy;
 
-// Global cache for model metadata (5 minute TTL)
+// Model metadata cache removed - was only used for Ollama local models
+// Kept as placeholder for future API-based model metadata if needed
+#[derive(Clone)]
+struct ModelMetadataCache;
+
+impl ModelMetadataCache {
+    fn new(_ttl: Duration) -> Self {
+        Self
+    }
+}
+
+// Global cache placeholder (no-op now that Ollama is removed)
 static METADATA_CACHE: Lazy<ModelMetadataCache> = Lazy::new(|| {
     ModelMetadataCache::new(Duration::from_secs(300))
 });
@@ -392,24 +402,13 @@ impl SummaryService {
 
         // Dynamically fetch context size based on provider and model
         let token_threshold = if provider == LLMProvider::Ollama {
-            match METADATA_CACHE.get_or_fetch(&model_name, ollama_endpoint.as_deref()).await {
-                Ok(metadata) => {
-                    // Reserve 300 tokens for prompt overhead
-                    let optimal = metadata.context_size.saturating_sub(300);
-                    info!(
-                        "✓ Using dynamic context for {}: {} tokens (chunk size: {})",
-                        model_name, metadata.context_size, optimal
-                    );
-                    optimal
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to fetch context for {}: {}. Using default 4000",
-                        model_name, e
-                    );
-                    4000  // Fallback to safe default
-                }
-            }
+            // Ollama local inference removed, use default context size
+            let default_context = 4000;
+            info!(
+                "Using default context for {}: {} tokens",
+                model_name, default_context
+            );
+            default_context
         } else if provider == LLMProvider::BuiltInAI {
             // Get model's context size from registry
             use crate::summary::summary_engine::models;

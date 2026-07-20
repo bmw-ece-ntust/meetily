@@ -28,7 +28,7 @@ interface RetranscribeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   meetingId: string;
-  meetingFolderPath: string | null;
+  meetingFolderPath?: string | null;
   onComplete?: () => void;
 }
 
@@ -55,7 +55,6 @@ export function RetranscribeDialog({
   open,
   onOpenChange,
   meetingId,
-  meetingFolderPath,
   onComplete,
 }: RetranscribeDialogProps) {
   const { selectedLanguage, transcriptModelConfig } = useConfig();
@@ -197,11 +196,6 @@ export function RetranscribeDialog({
   }, [open, meetingId]);
 
   const handleStartRetranscription = async () => {
-    if (!meetingFolderPath) {
-      setError('Meeting folder path not available');
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setProgress(null);
@@ -216,7 +210,7 @@ export function RetranscribeDialog({
 
       await invoke('start_retranscription_command', {
         meetingId,
-        meetingFolderPath,
+        meetingFolderPath: null,
         language: languageToSend,
         model: selectedModelDetails?.name || null,
         provider: selectedModelDetails?.provider || null,
@@ -396,7 +390,7 @@ export function RetranscribeDialog({
               <Button
                 onClick={handleStartRetranscription}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!meetingFolderPath}
+                disabled={!meetingId}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Start Retranscription

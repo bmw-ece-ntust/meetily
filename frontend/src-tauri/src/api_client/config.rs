@@ -37,20 +37,16 @@ impl ApiConfig {
 
     /// Load config from SQLite database
     pub async fn load_from_db(pool: &sqlx::SqlitePool) -> Result<Self, sqlx::Error> {
-        let row = sqlx::query!(
-            r#"
-            SELECT base_url, api_key
-            FROM api_config
-            WHERE id = 1
-            "#
+        let row = sqlx::query_as::<_, (String, Option<String>)>(
+            "SELECT base_url, api_key FROM api_config WHERE id = 1"
         )
         .fetch_optional(pool)
         .await?;
 
         match row {
-            Some(row) => Ok(Self {
-                base_url: row.base_url,
-                api_key: row.api_key,
+            Some((base_url, api_key)) => Ok(Self {
+                base_url,
+                api_key,
             }),
             None => Ok(Self::default()),
         }
@@ -61,17 +57,17 @@ impl ApiConfig {
         self.validate()
             .map_err(|e| sqlx::Error::Protocol(e.into()))?;
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO api_config (id, base_url, api_key)
             VALUES (1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 base_url = excluded.base_url,
                 api_key = excluded.api_key
-            "#,
-            self.base_url,
-            self.api_key
+            "#
         )
+        .bind(&self.base_url)
+        .bind(&self.api_key)
         .execute(pool)
         .await?;
 

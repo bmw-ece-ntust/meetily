@@ -222,17 +222,17 @@ pub async fn initialize_fresh_database(app: AppHandle) -> Result<(), String> {
         pool,
         "builtin-ai",
         default_summary_model,
-        "large-v3", // Default whisper model (unused for builtin but required)
+        crate::config::DEFAULT_TRANSCRIPTION_MODEL,
         None,
     ).await {
         error!("Failed to set default summary model config: {}", e);
     }
 
-    // Default Transcription Model: Parakeet
+    // Default transcription model mirrors ai-meeting-agent defaults.
     if let Err(e) = crate::database::repositories::setting::SettingsRepository::save_transcript_config(
         pool,
-        "parakeet",
-        crate::config::DEFAULT_PARAKEET_MODEL,
+        crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
+        crate::config::DEFAULT_TRANSCRIPTION_MODEL,
     ).await {
         error!("Failed to set default transcription model config: {}", e);
     }

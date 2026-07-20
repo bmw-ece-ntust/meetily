@@ -1,11 +1,33 @@
-// API request/response types matching ai-meeting-agent API.md spec
+// API request/response types matching ai-meeting-agent API
+// Synced with ai-meeting-agent/crates/core/src/models.rs and crates/server/src/types.rs
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // Meeting Types
 // ============================================================================
+
+/// Source of meeting metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MetadataSource {
+    UserProvided,
+    CalendarBot,
+    Filename,
+    FFprobe,
+    Default,
+}
+
+/// Audio file metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMetadata {
+    pub codec: Option<String>,
+    pub sample_rate: Option<u32>,
+    pub bit_rate: Option<u64>,
+    pub channels: Option<u8>,
+    pub file_size_bytes: Option<u64>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meeting {
@@ -14,10 +36,25 @@ pub struct Meeting {
     pub date: DateTime<Utc>,
     pub duration_seconds: Option<u64>,
     pub status: MeetingStatus,
-    pub audio_file: Option<String>,
     pub transcription: Option<TranscriptionInfo>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub participants: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organizer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata_source: Option<MetadataSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_metadata: Option<FileMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recording_date: Option<NaiveDateTime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -33,7 +70,6 @@ pub struct TranscriptionInfo {
     pub provider: String,
     pub model: String,
     pub completed_at: DateTime<Utc>,
-    pub version: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,15 +104,19 @@ pub struct TranscriptResponse {
     pub meeting_id: String,
     pub status: MeetingStatus,
     pub transcript: Option<Transcript>,
-    pub total_segments: u64,
-    pub limit: u64,
-    pub offset: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transcript {
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segments: Vec<TranscriptSegment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refined_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +125,20 @@ pub struct TranscriptSegment {
     pub start: f64,
     pub end: f64,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<Vec<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_logprob: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compression_ratio: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_speech_prob: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -134,7 +188,7 @@ pub struct Summary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "lowercase")]
 pub enum SummaryTemplate {
     KeyPoints,
     ActionItems,
@@ -150,6 +204,18 @@ pub enum SummaryStatus {
     Completed,
     Failed,
 }
+
+impl std::fmt::Display for SummaryStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SummaryStatus::Pending => write!(f, "Pending"),
+            SummaryStatus::Processing => write!(f, "Processing"),
+            SummaryStatus::Completed => write!(f, "Completed"),
+            SummaryStatus::Failed => write!(f, "Failed"),
+        }
+    }
+}
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GenerateSummaryRequest {
@@ -180,6 +246,7 @@ pub struct JobStatusResponse {
 pub enum JobType {
     Import,
     Summary,
+    Retranscribe,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -212,36 +279,13 @@ pub struct ProgressEvent {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportResponse {
     pub job_id: String,
-    pub status: String,
+    pub status: JobState,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CancelJobResponse {
     pub job_id: String,
     pub cancelled: bool,
-}
-
-// ============================================================================
-// Metadata Types
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MeetingMetadata {
-    pub meeting_id: String,
-    pub participants: Vec<String>,
-    pub location: Option<String>,
-    pub organizer: Option<String>,
-    pub metadata_source: String,
-    pub recording_date: Option<DateTime<Utc>>,
-    pub platform: Option<String>,
-    pub file_metadata: FileMetadata,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileMetadata {
-    pub original_filename: String,
-    pub size_bytes: u64,
-    pub duration_seconds: Option<u64>,
 }
 
 // ============================================================================

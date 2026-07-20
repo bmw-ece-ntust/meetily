@@ -420,7 +420,7 @@ pub async fn api_process_transcript<R: Runtime>(
 async fn poll_summary_job<R: Runtime>(
     app: AppHandle<R>,
     client: std::sync::Arc<tokio::sync::RwLock<crate::api_client::client::ApiClient>>,
-    cache: crate::api_client::cache::MemoryCache,
+    cache: std::sync::Arc<crate::api_client::cache::MemoryCache>,
     job_id: &str,
     meeting_id: &str,
 ) -> Result<(), String> {

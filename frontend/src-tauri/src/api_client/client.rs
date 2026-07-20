@@ -177,9 +177,9 @@ impl ApiClient {
         }
     }
 
-    pub async fn get_meeting_metadata(&self, id: &str) -> ApiResult<MeetingMetadata> {
-        let url = self.build_url(&format!("/meetings/{}/metadata", id));
-        let builder = self.client.get(&url);
+    pub async fn retranscribe_meeting(&self, id: &str) -> ApiResult<ImportResponse> {
+        let url = self.build_url(&format!("/meetings/{}/retranscribe", id));
+        let builder = self.client.post(&url);
         let builder = self.add_auth_header(builder);
         let response = builder.send().await?;
 

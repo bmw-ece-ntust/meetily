@@ -139,17 +139,6 @@ pub struct MeetingTranscript {
     pub duration: Option<f64>,
 }
 
-/// Meeting metadata without transcripts (for pagination)
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MeetingMetadata {
-    pub id: String,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub folder_path: Option<String>,
-}
-
 /// Paginated transcripts response with total count
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaginatedTranscriptsResponse {
@@ -334,13 +323,14 @@ pub async fn api_get_meetings<R: Runtime>(
     let cache = state.memory_cache.clone();
 
     // Check cache first
-    if let Some(cached_meetings) = cache.get_all_meetings().await {
+    let cached_meetings = cache.get_all_meetings().await;
+    if !cached_meetings.is_empty() {
         log_info!("Using cached meetings list ({} meetings)", cached_meetings.len());
         let result: Vec<Meeting> = cached_meetings
             .into_iter()
             .map(|m| Meeting {
-                id: m.meeting_id,
-                title: m.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+                id: m.id.clone(),
+                title: m.title.clone(),
             })
             .collect();
         return Ok(result);
@@ -353,14 +343,14 @@ pub async fn api_get_meetings<R: Runtime>(
 
             // Cache all meetings
             for meeting in &response.meetings {
-                cache.set_meeting(meeting.meeting_id.clone(), meeting.clone()).await;
+                cache.set_meeting(meeting.clone()).await;
             }
 
             let result: Vec<Meeting> = response.meetings
                 .into_iter()
                 .map(|m| Meeting {
-                    id: m.meeting_id,
-                    title: m.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+                    id: m.id.clone(),
+                    title: m.title.clone(),
                 })
                 .collect();
             Ok(result)
@@ -400,14 +390,14 @@ pub async fn api_search_transcripts<R: Runtime>(
     let mut all_results = Vec::new();
 
     // Search each meeting's transcript
-    for meeting in meetings_response.meetings {
-        match client.search_transcript(&meeting.meeting_id, &query, None, None).await {
+    for meeting in &meetings_response.meetings {
+        match client.search_transcript(&meeting.id, &query, None, None).await {
             Ok(search_response) => {
                 // Convert API search results to TranscriptSearchResult format
                 for result in search_response.results {
                     all_results.push(TranscriptSearchResult {
-                        id: format!("{}_{}", meeting.meeting_id, result.segment_id),
-                        title: meeting.title.clone().unwrap_or_else(|| "Untitled Meeting".to_string()),
+                        id: format!("{}_{}", meeting.id, result.segment_id),
+                        title: meeting.title.clone(),
                         match_context: result.text.clone(),
                         timestamp: format!("{:.2}", result.start),
                     });
@@ -415,7 +405,7 @@ pub async fn api_search_transcripts<R: Runtime>(
             }
             Err(e) => {
                 // Log error but continue searching other meetings
-                log_warn!("Error searching meeting {}: {}", meeting.meeting_id, e);
+                log_warn!("Error searching meeting {}: {}", meeting.id, e);
             }
         }
     }
@@ -681,8 +671,8 @@ pub async fn api_get_transcript_config<R: Runtime>(
         Ok(None) => {
             log_info!("No transcript config found, returning default.");
             Ok(Some(TranscriptConfig {
-                provider: "parakeet".to_string(),
-                model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
+                provider: crate::config::DEFAULT_TRANSCRIPTION_PROVIDER.to_string(),
+                model: crate::config::DEFAULT_TRANSCRIPTION_MODEL.to_string(),
                 api_key: None,
             }))
         }
@@ -809,7 +799,7 @@ pub async fn api_delete_meeting<R: Runtime>(
             log_info!("Successfully deleted meeting {} from API", meeting_id);
             
             // Clear from cache
-            cache.invalidate_meeting(&meeting_id).await;
+            cache.remove_meeting(&meeting_id).await;
 
             Ok(serde_json::json!({
                 "status": "success",
@@ -844,23 +834,11 @@ pub async fn api_get_meeting<R: Runtime>(
     if let Some(cached_meeting) = cache.get_meeting(&meeting_id).await {
         log_info!("Using cached meeting for {}", meeting_id);
         return Ok(MeetingDetails {
-            id: cached_meeting.meeting_id,
-            title: cached_meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
-            created_at: crate::database::models::DateTimeUtc(
-                chrono::DateTime::parse_from_rfc3339(
-                    &cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
-                )
-                .unwrap_or_else(|_| chrono::Utc::now().into())
-                .with_timezone(&chrono::Utc)
-            ),
-            updated_at: crate::database::models::DateTimeUtc(
-                chrono::DateTime::parse_from_rfc3339(
-                    &cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
-                )
-                .unwrap_or_else(|_| chrono::Utc::now().into())
-                .with_timezone(&chrono::Utc)
-            ),
-            folder_path: None, // API doesn't provide folder_path
+            id: cached_meeting.id.clone(),
+            title: cached_meeting.title.clone(),
+            created_at: cached_meeting.created_at.to_rfc3339(),
+            updated_at: cached_meeting.updated_at.to_rfc3339(),
+            transcripts: vec![], // Transcripts fetched separately via api_get_meeting_transcripts
         });
     }
 
@@ -870,26 +848,14 @@ pub async fn api_get_meeting<R: Runtime>(
             log_info!("Successfully retrieved meeting {} from API", meeting_id);
             
             // Cache the meeting
-            cache.set_meeting(meeting_id.clone(), meeting.clone()).await;
+            cache.set_meeting(meeting.clone()).await;
 
             Ok(MeetingDetails {
-                id: meeting.meeting_id,
-                title: meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
-                created_at: crate::database::models::DateTimeUtc(
-                    chrono::DateTime::parse_from_rfc3339(
-                        &meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
-                    )
-                    .unwrap_or_else(|_| chrono::Utc::now().into())
-                    .with_timezone(&chrono::Utc)
-                ),
-                updated_at: crate::database::models::DateTimeUtc(
-                    chrono::DateTime::parse_from_rfc3339(
-                        &meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
-                    )
-                    .unwrap_or_else(|_| chrono::Utc::now().into())
-                    .with_timezone(&chrono::Utc)
-                ),
-                folder_path: None, // API doesn't provide folder_path
+                id: meeting.id.clone(),
+                title: meeting.title.clone(),
+                created_at: meeting.created_at.to_rfc3339(),
+                updated_at: meeting.updated_at.to_rfc3339(),
+                transcripts: vec![], // Transcripts fetched separately via api_get_meeting_transcripts
             })
         }
         Err(e) => {
@@ -905,7 +871,7 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
     _app: AppHandle<R>,
     meeting_id: String,
     state: tauri::State<'_, AppState>,
-) -> Result<MeetingMetadata, String> {
+) -> Result<crate::api_client::types::Meeting, String> {
     log_info!("api_get_meeting_metadata called for meeting_id: {}", meeting_id);
 
     // Use API client to fetch metadata from ai-meeting-agent
@@ -915,13 +881,7 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
     // Check cache first
     if let Some(cached_meeting) = cache.get_meeting(&meeting_id).await {
         log_info!("Using cached meeting metadata for {}", meeting_id);
-        return Ok(MeetingMetadata {
-            id: cached_meeting.meeting_id,
-            title: cached_meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
-            created_at: cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-            updated_at: cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-            folder_path: None, // API doesn't provide folder_path
-        });
+        return Ok(cached_meeting);
     }
 
     // Fetch from API
@@ -930,15 +890,9 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
             log_info!("Successfully retrieved meeting metadata from API: {}", meeting_id);
             
             // Cache the meeting
-            cache.set_meeting(meeting_id.clone(), meeting.clone()).await;
+            cache.set_meeting(meeting.clone()).await;
 
-            Ok(MeetingMetadata {
-                id: meeting.meeting_id,
-                title: meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
-                created_at: meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                updated_at: meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                folder_path: None, // API doesn't provide folder_path
-            })
+            Ok(meeting)
         }
         Err(e) => {
             log_error!("Error retrieving meeting metadata from API {}: {}", meeting_id, e);
@@ -1009,11 +963,11 @@ pub async fn api_get_meeting_transcripts<R: Runtime>(
     match client.get_transcript(&meeting_id, Some(limit as u64), Some(offset as u64)).await {
         Ok(response) => {
             if let Some(transcript) = response.transcript {
+                let total_segments = transcript.segments.len() as i64;
                 log_info!(
-                    "Successfully retrieved {} transcript segments for meeting {} (total: {})",
+                    "Successfully retrieved {} transcript segments for meeting {}",
                     transcript.segments.len(),
-                    meeting_id,
-                    response.total_segments
+                    meeting_id
                 );
 
                 // Cache the full transcript
@@ -1032,11 +986,11 @@ pub async fn api_get_meeting_transcripts<R: Runtime>(
                     })
                     .collect::<Vec<_>>();
 
-                let has_more = (offset + meeting_transcripts.len() as i64) < response.total_segments as i64;
+                let has_more = (offset + meeting_transcripts.len() as i64) < total_segments;
 
                 Ok(PaginatedTranscriptsResponse {
                     transcripts: meeting_transcripts,
-                    total_count: response.total_segments as i64,
+                    total_count: total_segments,
                     has_more,
                 })
             } else {
@@ -1073,12 +1027,17 @@ pub async fn api_save_meeting_title<R: Runtime>(
     let client = state.api_client.read().await;
     let cache = state.memory_cache.clone();
 
-    match client.update_meeting(&meeting_id, Some(&title), None).await {
+    let request = crate::api_client::types::UpdateMeetingRequest {
+        title: Some(title),
+        date: None,
+    };
+
+    match client.update_meeting(&meeting_id, request).await {
         Ok(meeting) => {
             log_info!("Successfully saved meeting title for {}", meeting_id);
             
             // Update cache
-            cache.set_meeting(meeting_id.clone(), meeting).await;
+            cache.set_meeting(meeting).await;
 
             Ok(serde_json::json!({"message": "Meeting title saved successfully"}))
         }
