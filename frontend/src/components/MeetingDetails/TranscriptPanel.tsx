@@ -11,6 +11,7 @@ interface TranscriptPanelProps {
   isRecording: boolean;
   disableAutoScroll?: boolean;
   meetingId?: string;
+  meetingTitle?: string;
   onRefetchTranscripts?: () => Promise<void>;
   style?: CSSProperties;
   className?: string;
@@ -21,6 +22,7 @@ export function TranscriptPanel({
   onCopyTranscript,
   isRecording,
   meetingId,
+  meetingTitle,
   onRefetchTranscripts,
   style,
   className,
@@ -35,6 +37,7 @@ export function TranscriptPanel({
           transcriptCount={transcripts?.length || 0}
           onCopyTranscript={onCopyTranscript}
           meetingId={meetingId}
+          meetingTitle={meetingTitle}
           onRefetchTranscripts={onRefetchTranscripts}
         />
       </div>

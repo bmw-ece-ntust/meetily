@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Copy, RefreshCw, Loader2 } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { toast } from 'sonner';
-import { meetingApiService } from '@/services/meetingApiService';
+import { useJobQueue } from '@/contexts/JobQueueContext';
 
 interface TranscriptButtonGroupProps {
   transcriptCount: number;
   onCopyTranscript: () => void;
   meetingId?: string;
+  meetingTitle?: string;
   onRefetchTranscripts?: () => Promise<void>;
 }
 
@@ -19,44 +20,40 @@ export function TranscriptButtonGroup({
   transcriptCount,
   onCopyTranscript,
   meetingId,
+  meetingTitle,
   onRefetchTranscripts,
 }: TranscriptButtonGroupProps) {
-  const [isRetranscribing, setIsRetranscribing] = useState(false);
+  const { enqueueRetranscribe, isMeetingBusy, jobs } = useJobQueue();
 
-  const handleRetranscribe = useCallback(async () => {
+  const isRetranscribing = useMemo(() => {
+    if (!meetingId) return false;
+    return isMeetingBusy(meetingId, 'retranscribe');
+  }, [isMeetingBusy, meetingId, jobs]);
+
+  const handleRetranscribe = useCallback(() => {
     if (!meetingId || isRetranscribing) return;
 
-    setIsRetranscribing(true);
     Analytics.trackButtonClick('enhance_transcript', 'meeting_details');
 
-    try {
-      const { job_id } = await meetingApiService.retranscribeMeeting(meetingId);
-      toast.info('Retranscription started', {
-        description: `Job ${job_id}`,
-      });
-
-      // Poll job until complete, then refresh transcripts
-      for (let i = 0; i < 200; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        const status = await meetingApiService.getJobStatus(job_id);
-        const state = status.state?.toLowerCase();
-        if (state === 'completed') {
-          toast.success('Retranscription complete');
+    enqueueRetranscribe({
+      meetingId,
+      meetingTitle: meetingTitle || meetingId,
+      onComplete: async () => {
+        try {
           await onRefetchTranscripts?.();
-          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          toast.error('Failed to refresh transcript', { description: message });
         }
-        if (state === 'failed' || state === 'cancelled') {
-          throw new Error(status.error || `Retranscription ${state}`);
-        }
-      }
-      throw new Error('Retranscription timed out');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error('Retranscription failed', { description: message });
-    } finally {
-      setIsRetranscribing(false);
-    }
-  }, [meetingId, isRetranscribing, onRefetchTranscripts]);
+      },
+    });
+  }, [
+    enqueueRetranscribe,
+    isRetranscribing,
+    meetingId,
+    meetingTitle,
+    onRefetchTranscripts,
+  ]);
 
   return (
     <div className="flex items-center justify-center w-full gap-2">
@@ -80,7 +77,7 @@ export function TranscriptButtonGroup({
             size="sm"
             variant="outline"
             className="bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 border-blue-200 xl:px-4"
-            onClick={() => { void handleRetranscribe(); }}
+            onClick={handleRetranscribe}
             disabled={isRetranscribing}
             title="Retranscribe audio"
           >

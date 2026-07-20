@@ -18,9 +18,11 @@ import { OnboardingProvider } from '@/contexts/OnboardingContext'
 import { OnboardingFlow } from '@/components/onboarding'
 import { loadBetaFeatures } from '@/types/betaFeatures'
 import { DownloadProgressToastProvider } from '@/components/shared/DownloadProgressToast'
+import { ProcessingJobsIndicator } from '@/components/shared/ProcessingJobsIndicator'
 import { UpdateCheckProvider } from '@/components/UpdateCheckProvider'
 import { ImportAudioDialog, ImportDropOverlay } from '@/components/ImportAudio'
 import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
+import { JobQueueProvider } from '@/contexts/JobQueueContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
 
 
@@ -237,29 +239,32 @@ export default function RootLayout({
               <OnboardingProvider>
                 <UpdateCheckProvider>
                   <SidebarProvider>
-                    <TooltipProvider>
-                      <ImportDialogProvider onOpen={handleOpenImportDialog}>
-                        {/* Download progress toast provider - listens for background downloads */}
-                        <DownloadProgressToastProvider />
+                    <JobQueueProvider>
+                      <TooltipProvider>
+                        <ImportDialogProvider onOpen={handleOpenImportDialog}>
+                          {/* Download progress toast provider - listens for background downloads */}
+                          <DownloadProgressToastProvider />
+                          <ProcessingJobsIndicator />
 
-                        {/* Gate: wait for status, then onboarding or main app */}
-                        {isCheckingOnboarding ? null : showOnboarding ? (
-                          <OnboardingFlow onComplete={handleOnboardingComplete} />
-                        ) : (
-                          <div className="flex">
-                            <Sidebar />
-                            <MainContent>{children}</MainContent>
-                          </div>
-                        )}
-                        {/* Import audio overlay and dialog */}
-                        <ImportDropOverlay visible={showDropOverlay} />
-                        <ConditionalImportDialog
-                          showImportDialog={showImportDialog}
-                          handleImportDialogClose={handleImportDialogClose}
-                          importFilePath={importFilePath}
-                        />
-                      </ImportDialogProvider>
-                    </TooltipProvider>
+                          {/* Gate: wait for status, then onboarding or main app */}
+                          {isCheckingOnboarding ? null : showOnboarding ? (
+                            <OnboardingFlow onComplete={handleOnboardingComplete} />
+                          ) : (
+                            <div className="flex">
+                              <Sidebar />
+                              <MainContent>{children}</MainContent>
+                            </div>
+                          )}
+                          {/* Import audio overlay and dialog */}
+                          <ImportDropOverlay visible={showDropOverlay} />
+                          <ConditionalImportDialog
+                            showImportDialog={showImportDialog}
+                            handleImportDialogClose={handleImportDialogClose}
+                            importFilePath={importFilePath}
+                          />
+                        </ImportDialogProvider>
+                      </TooltipProvider>
+                    </JobQueueProvider>
                   </SidebarProvider>
                 </UpdateCheckProvider>
               </OnboardingProvider>

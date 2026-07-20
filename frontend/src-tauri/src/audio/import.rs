@@ -5,39 +5,23 @@ use crate::api_client::types::JobState;
 use crate::state::AppState;
 use anyhow::{anyhow, Result};
 use log::{error, info};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::RwLock;
 
 use super::constants::AUDIO_EXTENSIONS;
 
-static IMPORT_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-static IMPORT_CANCELLED: AtomicBool = AtomicBool::new(false);
+const MAX_CONCURRENT_IMPORTS: usize = 3;
 const MAX_FILE_SIZE_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 
-struct ImportGuard;
-
-impl ImportGuard {
-    fn acquire() -> Result<Self, String> {
-        if IMPORT_IN_PROGRESS
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return Err("Import already in progress".to_string());
-        }
-        Ok(Self)
-    }
-}
-
-impl Drop for ImportGuard {
-    fn drop(&mut self) {
-        IMPORT_IN_PROGRESS.store(false, Ordering::SeqCst);
-    }
-}
+static ACTIVE_IMPORTS: AtomicUsize = AtomicUsize::new(0);
+static CANCELLED_JOBS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioFileInfo {
@@ -50,6 +34,7 @@ pub struct AudioFileInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportProgress {
+    pub job_id: String,
     pub stage: String,
     pub progress_percentage: u32,
     pub message: String,
@@ -57,6 +42,7 @@ pub struct ImportProgress {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportResult {
+    pub job_id: String,
     pub meeting_id: String,
     pub title: String,
     pub segments_count: usize,
@@ -65,20 +51,71 @@ pub struct ImportResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportError {
+    pub job_id: Option<String>,
     pub error: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportStarted {
+    pub job_id: String,
     pub message: String,
 }
 
-pub fn is_import_in_progress() -> bool {
-    IMPORT_IN_PROGRESS.load(Ordering::SeqCst)
+fn try_acquire_import_slot() -> Result<(), String> {
+    loop {
+        let current = ACTIVE_IMPORTS.load(Ordering::SeqCst);
+        if current >= MAX_CONCURRENT_IMPORTS {
+            return Err(format!(
+                "Maximum of {} concurrent imports already running",
+                MAX_CONCURRENT_IMPORTS
+            ));
+        }
+        if ACTIVE_IMPORTS
+            .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            return Ok(());
+        }
+    }
 }
 
-pub fn cancel_import() {
-    IMPORT_CANCELLED.store(true, Ordering::SeqCst);
+fn release_import_slot() {
+    ACTIVE_IMPORTS.fetch_sub(1, Ordering::SeqCst);
+}
+
+fn mark_cancelled(job_id: &str) {
+    if let Ok(mut set) = CANCELLED_JOBS.lock() {
+        set.insert(job_id.to_string());
+    }
+}
+
+fn is_cancelled(job_id: &str) -> bool {
+    CANCELLED_JOBS
+        .lock()
+        .map(|set| set.contains(job_id))
+        .unwrap_or(false)
+}
+
+fn clear_cancelled(job_id: &str) {
+    if let Ok(mut set) = CANCELLED_JOBS.lock() {
+        set.remove(job_id);
+    }
+}
+
+pub fn is_import_in_progress() -> bool {
+    ACTIVE_IMPORTS.load(Ordering::SeqCst) > 0
+}
+
+pub fn active_import_count() -> usize {
+    ACTIVE_IMPORTS.load(Ordering::SeqCst)
+}
+
+pub fn cancel_import(job_id: Option<&str>) {
+    if let Some(id) = job_id {
+        mark_cancelled(id);
+        return;
+    }
+    // No job_id: cancel all tracked jobs is not available without list; no-op global flag removed
 }
 
 pub fn validate_audio_file(path: &Path) -> Result<AudioFileInfo> {
@@ -119,10 +156,17 @@ pub fn validate_audio_file(path: &Path) -> Result<AudioFileInfo> {
     })
 }
 
-fn emit_progress<R: Runtime>(app: &AppHandle<R>, stage: &str, progress: u32, message: &str) {
+fn emit_progress<R: Runtime>(
+    app: &AppHandle<R>,
+    job_id: &str,
+    stage: &str,
+    progress: u32,
+    message: &str,
+) {
     let _ = app.emit(
         "import-progress",
         ImportProgress {
+            job_id: job_id.to_string(),
             stage: stage.to_string(),
             progress_percentage: progress,
             message: message.to_string(),
@@ -139,14 +183,19 @@ pub async fn select_and_validate_audio_command<R: Runtime>(
         app_clone
             .dialog()
             .file()
-            .add_filter("Audio Files", &AUDIO_EXTENSIONS.iter().map(|s| *s).collect::<Vec<_>>())
+            .add_filter(
+                "Audio Files",
+                &AUDIO_EXTENSIONS.iter().map(|s| *s).collect::<Vec<_>>(),
+            )
             .blocking_pick_file()
     })
     .await
     .map_err(|e| format!("File dialog task failed: {}", e))?;
 
     match file_path {
-        Some(path) => validate_audio_file(Path::new(&path.to_string())).map(Some).map_err(|e| e.to_string()),
+        Some(path) => validate_audio_file(Path::new(&path.to_string()))
+            .map(Some)
+            .map_err(|e| e.to_string()),
         None => Ok(None),
     }
 }
@@ -166,40 +215,42 @@ pub async fn start_import_audio_command<R: Runtime>(
     _provider: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ImportStarted, String> {
-    if IMPORT_IN_PROGRESS.load(Ordering::SeqCst) {
-        return Err("Import already in progress".to_string());
-    }
+    try_acquire_import_slot()?;
 
     let source = PathBuf::from(&source_path);
-    validate_audio_file(&source).map_err(|e| e.to_string())?;
+    if let Err(e) = validate_audio_file(&source) {
+        release_import_slot();
+        return Err(e.to_string());
+    }
 
     let response = {
         let client = state.api_client.read().await;
-        client
-            .import_audio(&source, Some(title.clone()))
-            .await
-            .map_err(|e| format!("Failed to start import: {}", e))?
+        match client.import_audio(&source, Some(title.clone())).await {
+            Ok(r) => r,
+            Err(e) => {
+                release_import_slot();
+                return Err(format!("Failed to start import: {}", e));
+            }
+        }
     };
 
     let api_client = state.api_client.clone();
     let job_id = response.job_id.clone();
+    clear_cancelled(&job_id);
 
+    let job_id_for_spawn = job_id.clone();
     tauri::async_runtime::spawn(async move {
-        let _guard = match ImportGuard::acquire() {
-            Ok(guard) => guard,
-            Err(e) => {
-                error!("Import guard acquire failed: {}", e);
-                return;
-            }
-        };
-        IMPORT_CANCELLED.store(false, Ordering::SeqCst);
+        let result =
+            poll_import_job(app.clone(), api_client, job_id_for_spawn.clone(), title).await;
+        release_import_slot();
+        clear_cancelled(&job_id_for_spawn);
 
-        let result = poll_import_job(app.clone(), api_client, job_id, title).await;
         match result {
             Ok(result) => {
                 let _ = app.emit(
                     "import-complete",
                     serde_json::json!({
+                        "job_id": result.job_id,
                         "meeting_id": result.meeting_id,
                         "title": result.title,
                         "segments_count": result.segments_count,
@@ -209,13 +260,20 @@ pub async fn start_import_audio_command<R: Runtime>(
             }
             Err(e) => {
                 error!("Import failed: {}", e);
-                let _ = app.emit("import-error", ImportError { error: e.to_string() });
+                let _ = app.emit(
+                    "import-error",
+                    ImportError {
+                        job_id: Some(job_id_for_spawn),
+                        error: e.to_string(),
+                    },
+                );
             }
         }
     });
 
-    info!("Started import job {}", response.job_id);
+    info!("Started import job {}", job_id);
     Ok(ImportStarted {
+        job_id,
         message: "Import started".to_string(),
     })
 }
@@ -227,7 +285,7 @@ async fn poll_import_job<R: Runtime>(
     title: String,
 ) -> Result<ImportResult> {
     loop {
-        if IMPORT_CANCELLED.load(Ordering::SeqCst) {
+        if is_cancelled(&job_id) {
             let client = api_client.read().await;
             let _ = client.cancel_job(&job_id).await;
             return Err(anyhow!("Import cancelled"));
@@ -262,7 +320,7 @@ async fn poll_import_job<R: Runtime>(
         let message = latest_progress
             .map(|event| event.message.as_str())
             .unwrap_or("Import in progress...");
-        emit_progress(&app, stage, progress, message);
+        emit_progress(&app, &job_id, stage, progress, message);
 
         match status.state {
             JobState::Completed => {
@@ -284,6 +342,7 @@ async fn poll_import_job<R: Runtime>(
                     .unwrap_or(0.0);
 
                 return Ok(ImportResult {
+                    job_id,
                     meeting_id,
                     title,
                     segments_count,
@@ -291,7 +350,11 @@ async fn poll_import_job<R: Runtime>(
                 });
             }
             JobState::Failed => {
-                return Err(anyhow!(status.error.unwrap_or_else(|| "Import failed".to_string())));
+                return Err(anyhow!(
+                    status
+                        .error
+                        .unwrap_or_else(|| "Import failed".to_string())
+                ));
             }
             JobState::Cancelled => return Err(anyhow!("Import cancelled")),
             JobState::Pending | JobState::Processing => {}
@@ -300,15 +363,28 @@ async fn poll_import_job<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn cancel_import_command() -> Result<(), String> {
+pub async fn cancel_import_command(job_id: Option<String>) -> Result<(), String> {
+    if let Some(id) = job_id {
+        if !is_import_in_progress() && !is_cancelled(&id) {
+            // Still allow marking cancel if race with start
+        }
+        mark_cancelled(&id);
+        return Ok(());
+    }
+
     if !is_import_in_progress() {
         return Err("No import in progress".to_string());
     }
-    cancel_import();
-    Ok(())
+    // Without job_id, cannot cancel specific job; keep backward-compat error
+    Err("job_id required to cancel an import".to_string())
 }
 
 #[tauri::command]
 pub async fn is_import_in_progress_command() -> bool {
     is_import_in_progress()
+}
+
+#[tauri::command]
+pub async fn active_import_count_command() -> usize {
+    active_import_count()
 }

@@ -51,8 +51,8 @@ export interface UseImportAudioReturn {
     language?: string | null,
     model?: string | null,
     provider?: string | null
-  ) => Promise<void>;
-  cancelImport: () => Promise<void>;
+  ) => Promise<string | null>;
+  cancelImport: (jobId?: string | null) => Promise<void>;
   reset: () => void;
 }
 
@@ -80,8 +80,8 @@ export function useImportAudio({
     const cleanedUpRef = { current: false };
 
     const setupListeners = async () => {
-      // Progress events
-      const unlistenProgress = await listen<ImportProgress>(
+      // Progress events (legacy dialog path; JobQueue also listens app-wide)
+      const unlistenProgress = await listen<ImportProgress & { job_id?: string }>(
         'import-progress',
         (event) => {
           if (isCancelledRef.current) return;
@@ -120,7 +120,7 @@ export function useImportAudio({
       unlisteners.push(unlistenComplete);
 
       // Error event
-      const unlistenError = await listen<ImportError>(
+      const unlistenError = await listen<ImportError & { job_id?: string }>(
         'import-error',
         async (event) => {
           if (isCancelledRef.current) return;
@@ -192,7 +192,7 @@ export function useImportAudio({
     }
   }, []);
 
-  // Start the import process
+  // Start the import process (returns job_id when available)
   const startImport = useCallback(
     async (
       sourcePath: string,
@@ -200,7 +200,7 @@ export function useImportAudio({
       language?: string | null,
       model?: string | null,
       provider?: string | null
-    ) => {
+    ): Promise<string | null> => {
       isCancelledRef.current = false;
       setStatus('processing');
       setError(null);
@@ -217,13 +217,17 @@ export function useImportAudio({
           });
         }
 
-        await invoke('start_import_audio_command', {
-          sourcePath,
-          title,
-          language: language || null,
-          model: model || null,
-          provider: provider || null,
-        });
+        const result = await invoke<{ job_id?: string; message?: string }>(
+          'start_import_audio_command',
+          {
+            sourcePath,
+            title,
+            language: language || null,
+            model: model || null,
+            provider: provider || null,
+          }
+        );
+        return result?.job_id ?? null;
       } catch (err: any) {
         setStatus('error');
         const errorMsg = typeof err === 'string' ? err : (err?.message || String(err) || 'Failed to start import');
@@ -232,16 +236,17 @@ export function useImportAudio({
         await Analytics.trackError('import_audio_failed', errorMsg);
 
         onErrorRef.current?.(errorMsg);
+        return null;
       }
     },
     [fileInfo]
   );
 
-  // Cancel ongoing import
-  const cancelImport = useCallback(async () => {
+  // Cancel ongoing import (optional job_id for multi-import)
+  const cancelImport = useCallback(async (jobId?: string | null) => {
     isCancelledRef.current = true;
     try {
-      await invoke('cancel_import_command');
+      await invoke('cancel_import_command', { jobId: jobId ?? null });
       setStatus('idle');
       setProgress(null);
     } catch (err: any) {

@@ -132,6 +132,7 @@ export default function PageContent({
           isRecording={false}
           disableAutoScroll={true}
           meetingId={meeting.id}
+          meetingTitle={meetingData.meetingTitle || meeting.title}
           onRefetchTranscripts={onRefetchTranscripts}
           className="hidden md:flex min-w-0 min-h-0 bg-white flex-col relative shrink-0"
           style={{ width: `${transcriptWidthPct}%` }}

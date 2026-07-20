@@ -584,6 +584,7 @@ pub fn run() {
             audio::import::start_import_audio_command,
             audio::import::cancel_import_command,
             audio::import::is_import_in_progress_command,
+            audio::import::active_import_count_command,
             // API client commands
             api_client::commands::get_api_config,
             api_client::commands::set_api_config,

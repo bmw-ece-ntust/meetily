@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Summary, Transcript } from '@/types';
 import { toast } from 'sonner';
 import { meetingApiService } from '@/services/meetingApiService';
+import { useJobQueue } from '@/contexts/JobQueueContext';
 
 type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
 
@@ -13,8 +14,6 @@ interface UseSummaryGenerationProps {
   onMeetingUpdated?: () => Promise<void>;
 }
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export function useSummaryGeneration({
   meeting,
   transcripts,
@@ -22,8 +21,46 @@ export function useSummaryGeneration({
   setAiSummary,
   onMeetingUpdated,
 }: UseSummaryGenerationProps) {
+  const { enqueueSummary, jobs, cancelLocal, isMeetingBusy } = useJobQueue();
   const [summaryStatus, setSummaryStatus] = useState<SummaryStatus>('idle');
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [activeLocalId, setActiveLocalId] = useState<string | null>(null);
+
+  const meetingSummaryJob = useMemo(
+    () =>
+      jobs.find(
+        (j) =>
+          j.meetingId === meeting.id &&
+          j.type === 'summary' &&
+          j.state !== 'completed' &&
+          j.state !== 'failed' &&
+          j.state !== 'cancelled'
+      ),
+    [jobs, meeting.id]
+  );
+
+  // Mirror queue state into local summaryStatus for existing UI
+  useEffect(() => {
+    if (!meetingSummaryJob) {
+      if (summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating') {
+        // Job disappeared without terminal update — leave status as-is until explicit reset
+      }
+      return;
+    }
+
+    setActiveLocalId(meetingSummaryJob.id);
+    setSummaryError(meetingSummaryJob.error || null);
+
+    if (meetingSummaryJob.state === 'queued' || meetingSummaryJob.state === 'starting') {
+      setSummaryStatus(isRegenerating ? 'regenerating' : 'processing');
+    } else if (
+      meetingSummaryJob.state === 'pending' ||
+      meetingSummaryJob.state === 'processing'
+    ) {
+      setSummaryStatus(isRegenerating ? 'regenerating' : 'summarizing');
+    }
+  }, [meetingSummaryJob, isRegenerating, summaryStatus]);
 
   const getSummaryStatusMessage = useCallback((status: SummaryStatus) => {
     switch (status) {
@@ -48,45 +85,55 @@ export function useSummaryGeneration({
       return;
     }
 
+    if (isMeetingBusy(meeting.id, 'summary')) {
+      toast.info('Summary already in progress for this meeting');
+      return;
+    }
+
+    setIsRegenerating(isRegeneration);
     setSummaryStatus(isRegeneration ? 'regenerating' : 'processing');
     setSummaryError(null);
 
-    try {
-      const jobId = await meetingApiService.generateSummary(meeting.id, selectedTemplate, null);
-      setSummaryStatus('summarizing');
-      toast.info(isRegeneration ? 'Regenerating summary...' : 'Generating summary...');
-
-      for (let attempt = 0; attempt < 200; attempt += 1) {
-        const status = await meetingApiService.getJobStatus(jobId);
-        const state = status.state?.toLowerCase();
-
-        if (state === 'completed') {
-          const summary = await meetingApiService.getSummary(meeting.id);
+    const localId = enqueueSummary({
+      meetingId: meeting.id,
+      template: selectedTemplate,
+      language: null,
+      meetingTitle: meeting.title || meeting.id,
+      isRegeneration,
+      onComplete: async (meetingId) => {
+        try {
+          const summary = await meetingApiService.getSummary(meetingId);
           if (!summary) throw new Error('Summary job completed but no summary was returned');
           setAiSummary(summary);
           setSummaryStatus('completed');
-          toast.success('Summary generated successfully');
+          setSummaryError(null);
+          setActiveLocalId(null);
           await onMeetingUpdated?.();
-          return;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setSummaryError(message);
+          setSummaryStatus('error');
+          toast.error('Failed to load summary', { description: message });
         }
+      },
+      onError: (error) => {
+        setSummaryError(error);
+        setSummaryStatus('error');
+        setActiveLocalId(null);
+      },
+    });
 
-        if (state === 'failed' || state === 'cancelled') {
-          throw new Error(status.error || `Summary job ${state}`);
-        }
-
-        await delay(3000);
-      }
-
-      throw new Error('Summary generation timed out');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setSummaryError(message);
-      setSummaryStatus('error');
-      toast.error(isRegeneration ? 'Failed to regenerate summary' : 'Failed to generate summary', {
-        description: message,
-      });
-    }
-  }, [meeting.id, onMeetingUpdated, selectedTemplate, setAiSummary, transcripts.length]);
+    setActiveLocalId(localId);
+  }, [
+    enqueueSummary,
+    isMeetingBusy,
+    meeting.id,
+    meeting.title,
+    onMeetingUpdated,
+    selectedTemplate,
+    setAiSummary,
+    transcripts.length,
+  ]);
 
   const handleGenerateSummary = useCallback(async () => {
     await runSummaryJob(false);
@@ -97,10 +144,14 @@ export function useSummaryGeneration({
   }, [runSummaryJob]);
 
   const handleStopGeneration = useCallback(() => {
+    if (activeLocalId) {
+      cancelLocal(activeLocalId);
+    }
     setSummaryStatus('idle');
     setSummaryError(null);
+    setActiveLocalId(null);
     toast.info('Summary generation stopped');
-  }, []);
+  }, [activeLocalId, cancelLocal]);
 
   return {
     summaryStatus,
