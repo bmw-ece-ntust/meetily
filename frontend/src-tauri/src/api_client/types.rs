@@ -161,23 +161,41 @@ pub struct TranscriptSegment {
     pub speaker: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TranscriptSearchResponse {
-    pub meeting_id: String,
-    pub query: String,
-    pub results: Vec<TranscriptSearchResult>,
-    pub total: u64,
-    pub limit: u64,
-    pub offset: u64,
-}
-
+/// Matched transcript segment from global search.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranscriptSearchResult {
+pub struct MatchedSegment {
     pub segment_id: u32,
     pub start: f64,
     pub end: f64,
     pub text: String,
-    pub rank: f64,
+    pub timestamp: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
+}
+
+/// Meeting with matched transcript segments from global search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingSearchResult {
+    pub id: String,
+    pub title: String,
+    pub date: DateTime<Utc>,
+    pub duration_seconds: Option<u64>,
+    pub status: MeetingStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub participants: Option<Vec<String>>,
+    pub matched_segments: Vec<MatchedSegment>,
+    pub match_count: usize,
+    pub relevance_score: f64,
+}
+
+/// Response from `GET /transcripts/search`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlobalTranscriptSearchResponse {
+    pub query: String,
+    pub total_meetings: u64,
+    pub limit: u32,
+    pub offset: u32,
+    pub meetings: Vec<MeetingSearchResult>,
 }
 
 // ============================================================================

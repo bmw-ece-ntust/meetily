@@ -66,7 +66,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true)
 
   // Import audio state
   const [showDropOverlay, setShowDropOverlay] = useState(false)
@@ -74,25 +74,26 @@ export default function RootLayout({
   const [importFilePath, setImportFilePath] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check onboarding status first
+    // Check onboarding status first — do not render main app until resolved
     invoke<{ completed: boolean } | null>('get_onboarding_status')
       .then((status) => {
         const isComplete = status?.completed ?? false
-        
+
         if (!isComplete) {
           console.log('[Layout] Onboarding not completed, showing onboarding flow')
           setShowOnboarding(true)
         } else {
           console.log('[Layout] Onboarding completed, showing main app')
+          setShowOnboarding(false)
         }
-        
-        setOnboardingCompleted(isComplete)
       })
       .catch((error) => {
         console.error('[Layout] Failed to check onboarding status:', error)
         // Default to showing onboarding if we can't check
         setShowOnboarding(true)
-        setOnboardingCompleted(false)
+      })
+      .finally(() => {
+        setIsCheckingOnboarding(false)
       })
   }, [])
 
@@ -223,7 +224,6 @@ export default function RootLayout({
   const handleOnboardingComplete = () => {
     console.log('[Layout] Onboarding completed, reloading app')
     setShowOnboarding(false)
-    setOnboardingCompleted(true)
     // Optionally reload the window to ensure all state is fresh
     window.location.reload()
   }
@@ -242,8 +242,8 @@ export default function RootLayout({
                         {/* Download progress toast provider - listens for background downloads */}
                         <DownloadProgressToastProvider />
 
-                        {/* Show onboarding or main app */}
-                        {showOnboarding ? (
+                        {/* Gate: wait for status, then onboarding or main app */}
+                        {isCheckingOnboarding ? null : showOnboarding ? (
                           <OnboardingFlow onComplete={handleOnboardingComplete} />
                         ) : (
                           <div className="flex">

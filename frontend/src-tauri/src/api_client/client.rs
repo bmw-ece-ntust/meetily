@@ -218,15 +218,16 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
-    pub async fn search_transcript(
+    /// Global full-text search across all ready meetings' transcripts.
+    /// `GET /transcripts/search?q=...&limit=...&offset=...`
+    pub async fn search_all_transcripts(
         &self,
-        meeting_id: &str,
         query: &str,
         limit: Option<u64>,
         offset: Option<u64>,
-    ) -> ApiResult<TranscriptSearchResponse> {
-        let mut url = self.build_url(&format!("/meetings/{}/transcript/search", meeting_id));
-        
+    ) -> ApiResult<GlobalTranscriptSearchResponse> {
+        let mut url = self.build_url("/transcripts/search");
+
         let mut params = vec![format!("q={}", urlencoding::encode(query))];
         if let Some(limit) = limit {
             params.push(format!("limit={}", limit));
@@ -234,7 +235,7 @@ impl ApiClient {
         if let Some(offset) = offset {
             params.push(format!("offset={}", offset));
         }
-        
+
         url.push('?');
         url.push_str(&params.join("&"));
 

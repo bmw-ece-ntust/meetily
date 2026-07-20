@@ -594,7 +594,7 @@ pub fn run() {
             api_client::commands::delete_meeting,
             api_client::commands::retranscribe_meeting,
             api_client::commands::get_transcript,
-            api_client::commands::search_transcript,
+            api_client::commands::search_transcripts,
             api_client::commands::list_summaries,
             api_client::commands::generate_summary,
             api_client::commands::get_job_status,

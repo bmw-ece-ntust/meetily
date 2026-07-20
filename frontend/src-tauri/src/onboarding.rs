@@ -197,21 +197,6 @@ pub async fn complete_onboarding<R: Runtime>(
         .map_err(|e| format!("Failed to update API client: {}", e))?;
     drop(client);
 
-    // Save transcription model config for ai-meeting-agent
-    if let Err(e) = SettingsRepository::save_transcript_config(
-        pool,
-        crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
-        crate::config::DEFAULT_TRANSCRIPTION_MODEL,
-    ).await {
-        error!("Failed to save transcription model config: {}", e);
-        return Err(format!("Failed to save transcription model config: {}", e));
-    }
-    info!(
-        "Saved transcription model config: provider={}, model={}",
-        crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
-        crate::config::DEFAULT_TRANSCRIPTION_MODEL
-    );
-
     // Step 2: Mark onboarding as complete
     let mut status = load_onboarding_status(&app)
         .await

@@ -236,16 +236,15 @@ pub async fn get_transcript(
 }
 
 #[tauri::command]
-pub async fn search_transcript(
-    meeting_id: String,
+pub async fn search_transcripts(
     query: String,
     limit: Option<u64>,
     offset: Option<u64>,
     client: State<'_, Arc<RwLock<ApiClient>>>,
-) -> Result<CommandResult<TranscriptSearchResponse>, String> {
+) -> Result<CommandResult<GlobalTranscriptSearchResponse>, String> {
     let client = client.read().await;
     match client
-        .search_transcript(&meeting_id, &query, limit, offset)
+        .search_all_transcripts(&query, limit, offset)
         .await
     {
         Ok(response) => Ok(CommandResult::success(response)),

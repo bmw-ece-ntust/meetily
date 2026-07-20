@@ -224,19 +224,7 @@ pub async fn initialize_fresh_database(app: AppHandle) -> Result<(), String> {
     app.manage(app_state.upload_queue.clone());
     app.manage(app_state.upload_worker.clone());
 
-    // Set default model configuration for fresh installs
-    let pool = db_manager.pool();
-    
-    // Default transcription model mirrors ai-meeting-agent defaults.
-    if let Err(e) = crate::database::repositories::setting::SettingsRepository::save_transcript_config(
-        pool,
-        crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
-        crate::config::DEFAULT_TRANSCRIPTION_MODEL,
-    ).await {
-        error!("Failed to set default transcription model config: {}", e);
-    }
-
-    info!("Fresh database initialized successfully with default models");
+    info!("Fresh database initialized successfully");
 
     // Emit event to notify frontend that database is ready
     app.emit("database-initialized", ())

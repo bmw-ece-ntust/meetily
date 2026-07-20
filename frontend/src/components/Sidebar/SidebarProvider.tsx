@@ -159,7 +159,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     // The actual recording start/stop is handled in the Home component
   };
 
-  // Function to search through meeting transcripts
+  // Global transcript search via GET /transcripts/search
   const searchTranscripts = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -169,30 +169,42 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsSearching(true);
 
-
-      const meetingResults = await Promise.all(meetings.map(async (meeting) => {
-        const response = await invoke('search_transcript', {
-          meetingId: meeting.id,
-          query,
-          limit: 3,
-          offset: 0,
-        }) as {
-          success: boolean;
-          data?: { results?: Array<{ text: string; start: number }> };
-          error?: string;
+      const response = await invoke('search_transcripts', {
+        query,
+        limit: 50,
+        offset: 0,
+      }) as {
+        success: boolean;
+        data?: {
+          meetings?: Array<{
+            id: string;
+            title: string;
+            matched_segments?: Array<{
+              text: string;
+              timestamp?: string;
+              start?: number;
+            }>;
+          }>;
         };
+        error?: string;
+      };
 
-        if (!response.success || !response.data?.results?.length) return [];
+      if (!response.success || !response.data?.meetings?.length) {
+        setSearchResults([]);
+        return;
+      }
 
-        return response.data.results.map((result) => ({
-          id: meeting.id,
-          title: meeting.title,
-          matchContext: result.text,
-          timestamp: String(result.start),
-        }));
-      }));
-
-      setSearchResults(meetingResults.flat());
+      setSearchResults(
+        response.data.meetings.map((meeting) => {
+          const first = meeting.matched_segments?.[0];
+          return {
+            id: meeting.id,
+            title: meeting.title,
+            matchContext: first?.text ?? '',
+            timestamp: first?.timestamp ?? (first?.start != null ? String(first.start) : ''),
+          };
+        })
+      );
     } catch (error) {
       console.error('Error searching transcripts:', error);
       setSearchResults([]);
