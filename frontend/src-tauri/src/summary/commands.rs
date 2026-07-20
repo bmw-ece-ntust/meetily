@@ -11,10 +11,10 @@ use crate::summary::language_detection::{
     detect_summary_language, SummaryLanguageDetection,
 };
 use crate::summary::service::SummaryService;
-use log::{error as log_error, info as log_info, warn as log_warn};
+use log::{error as log_error, info as log_info, warn as log_warn, debug as log_debug};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Runtime, Emitter};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SummaryResponse {
@@ -524,29 +524,8 @@ async fn poll_summary_job<R: Runtime>(
 
     Ok(())
 }
-            meeting_id_clone.clone(),
-            text,
-            model,
-            model_name,
-            final_prompt,
-            final_template_id,
-            summary_language,
-        )
-        .await;
-    });
 
-    log_info!("🚀 Background task spawned for meeting_id: {}", &m_id);
-
-    Ok(ProcessTranscriptResponse {
-        message: "Summary generation started".to_string(),
-        process_id: m_id,
-    })
-}
-
-/// Cancels an ongoing summary generation process
-///
-/// This command triggers the cancellation token for the specified meeting,
-/// stopping the summary generation gracefully.
+/// Gets the per-meeting summary language override from metadata.json.
 #[tauri::command]
 pub async fn api_cancel_summary<R: Runtime>(
     _app: AppHandle<R>,

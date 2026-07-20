@@ -1,6 +1,3 @@
-#[path = "build/ffmpeg.rs"]
-mod ffmpeg;
-
 fn main() {
     // GPU Acceleration Detection and Build Guidance
     detect_and_report_gpu_capabilities();
@@ -15,8 +12,7 @@ fn main() {
         // The swift-rs crate build will be handled in the enhanced_macos crate's build.rs
     }
 
-    // Download and bundle FFmpeg binary at build-time
-    ffmpeg::ensure_ffmpeg_binary();
+    // NOTE: FFmpeg no longer needed - audio processing handled by ai-meeting-agent API
 
     tauri_build::build()
 }

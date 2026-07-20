@@ -141,6 +141,7 @@ impl Default for MemoryCache {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CacheStats {
     pub meeting_count: usize,
     pub transcript_count: usize,
