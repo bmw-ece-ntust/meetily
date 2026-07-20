@@ -1,23 +1,32 @@
-# Legacy Whisper Server API Archive
+# API Reference
 
-This document previously described the standalone whisper-server HTTP API used
-by older Meetily development flows.
+Meetily's app-to-backend communication happens entirely through [Tauri commands and events](https://tauri.app/v1/guides/features/command/). There is no public HTTP API for the current desktop application.
 
-## Current Supported Integration
+## Transcription Providers
 
-The supported Meetily app no longer requires a manually started whisper-server
-HTTP service. The Next.js UI communicates with the Rust/Tauri core through
-Tauri commands and events, and local transcription is handled inside the
-desktop application.
+Audio is sent to a cloud STT provider over HTTPS. Supported providers (configured in Transcript Settings):
 
-Use these docs for current development:
+- **Deepgram** — `https://api.deepgram.com/v1/listen`
+- **ElevenLabs** — `https://api.elevenlabs.io/v1/speech-to-text`
+- **Groq** — `https://api.groq.com/openai/v1/audio/transcriptions`
+- **OpenAI** — `https://api.openai.com/v1/audio/transcriptions`
+- **Custom** — any OpenAI-compatible `/v1/audio/transcriptions` endpoint (self-hosted Whisper, faster-whisper-server, etc.)
 
-- [Frontend README](README.md)
-- [Building from Source](../docs/BUILDING.md)
-- [Architecture](../docs/architecture.md)
+All providers use the same Multipart form upload (`file`, `model`, optional `language`, `response_format`).
 
-## Archived Status
+## LLM Providers (Summaries)
 
-The old whisper-server API is retained only as historical context for older
-branches or migration research. It is not a supported public API for current
-Meetily releases.
+- Claude
+- Groq
+- OpenAI
+- OpenRouter
+- Ollama (local)
+- Custom OpenAI-compatible endpoint
+
+## Tauri Commands
+
+The Tauri command surface is internal to the app and is not a stable public API. If you are extending the app, see `frontend/src-tauri/src/` and `frontend/src-tauri/src/api/api.rs`.
+
+## Archived Material
+
+Earlier Meetily development flows used a standalone whisper-server HTTP API. That backend has been removed; this document is retained only as a marker for old branches.

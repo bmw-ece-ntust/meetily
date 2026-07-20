@@ -5,11 +5,11 @@ A modern desktop application for recording, transcribing, and analyzing meetings
 ## Features
 
 - Real-time audio recording from both microphone and system audio
-- Live transcription using Whisper ASR (locally running)
+- Live transcription via cloud STT providers (Deepgram, ElevenLabs, Groq, OpenAI, or any OpenAI-compatible endpoint)
 - Native desktop integration using Tauri
 - Speaker diarization support
 - Rich text editor for note-taking
-- Privacy-focused: All processing happens locally
+- Privacy-aware: audio is sent only to the STT provider you configure
 
 ## Prerequisites
 
@@ -61,10 +61,10 @@ A modern desktop application for recording, transcribing, and analyzing meetings
 
 2. Clone the repository and navigate to the frontend directory:
    ```bash
-   git clone https://github.com/Zackriya-Solutions/meeting-minutes
-   cd meeting-minutes/frontend
+   git clone https://github.com/bmw-ece-ntust/meetily
+   cd meetily/frontend
    ```
-  
+   
 
 3. Install dependencies:
    ```bash
@@ -81,10 +81,10 @@ A modern desktop application for recording, transcribing, and analyzing meetings
 
 2. Clone the repository and navigate to the frontend directory:
    ```cmd
-   git clone https://github.com/Zackriya-Solutions/meeting-minutes
-   cd meeting-minutes/frontend
+   git clone https://github.com/bmw-ece-ntust/meetily
+   cd meetily/frontend
    ```
-
+   
 3. Install dependencies:
    ```cmd
    pnpm install
@@ -127,14 +127,13 @@ pnpm run tauri:dev
 pnpm run tauri:build
 ```
 
-## Local Transcription
+## Cloud Transcription
 
-Current Meetily does not require a separate FastAPI service, Docker backend, or manually started whisper-server process. Local transcription is handled by the Rust/Tauri desktop app.
+Meetily transcribes audio through configurable cloud STT providers. Open Transcript Settings in the app and pick a provider (Deepgram, ElevenLabs, Groq, OpenAI, or a custom OpenAI-compatible endpoint), then enter your API key. The same provider/model is used for live recording, audio-file import, and meeting retranscription.
 
-For build and acceleration details, see:
+For build details, see:
 
 - [Building from Source](../docs/BUILDING.md)
-- [GPU Acceleration](../docs/GPU_ACCELERATION.md)
 - [Architecture](../docs/architecture.md)
 
 ## Development

@@ -275,8 +275,9 @@ pub async fn update_tray_menu_async<R: Runtime>(app: &AppHandle<R>) {
     log::info!("Tray: Current recording state: {:?}", recording_state);
 
     // Determine if recording should be allowed
-    // Only block recording during incomplete onboarding when no transcription model is ready
-    let can_record = check_can_record(app).await;
+    // Cloud-first: no model download required, so always allow recording
+    // (onboarding is checked separately via the recording flow itself)
+    let can_record = true;
     log::info!("Tray: can_record: {}", can_record);
 
     if let Ok(menu) = build_menu(app, recording_state, can_record) {

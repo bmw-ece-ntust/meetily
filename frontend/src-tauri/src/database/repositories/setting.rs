@@ -203,7 +203,7 @@ impl SettingsRepository {
             crate::config::DEFAULT_TRANSCRIPTION_MODEL,
             api_key_column
         );
-        sqlx::query(&query).bind(api_key).execute(pool).await?;
+        sqlx::query(&query).bind(api_key).bind(provider).execute(pool).await?;
 
         Ok(())
     }

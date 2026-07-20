@@ -16,21 +16,8 @@ macro_rules! perf_debug {
     ($($arg:tt)*) => {};
 }
 
-#[cfg(debug_assertions)]
-macro_rules! perf_trace {
-    ($($arg:tt)*) => {
-        log::trace!($($arg)*)
-    };
-}
-
-#[cfg(not(debug_assertions))]
-macro_rules! perf_trace {
-    ($($arg:tt)*) => {};
-}
-
 // Make these macros available to other modules
 pub(crate) use perf_debug;
-pub(crate) use perf_trace;
 
 // Re-export async logging macros for external use (removed due to macro conflicts)
 

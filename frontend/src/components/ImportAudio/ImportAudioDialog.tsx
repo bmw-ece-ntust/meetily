@@ -94,7 +94,7 @@ export function ImportAudioDialog({
   }, [open, preselectedFile, reset, validateFile]);
 
   useEffect(() => {
-    if (fileInfo && !title && !titleModifiedByUser) {
+    if (fileInfo && !titleModifiedByUser && title !== fileInfo.filename) {
       setTitle(fileInfo.filename);
     }
   }, [fileInfo, title, titleModifiedByUser]);

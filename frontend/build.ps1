@@ -1,10 +1,10 @@
 # Meetily Build Script with Code Signing
 # Loads signing credentials from .env file or environment variables
-# Then calls build-gpu.bat to execute the build
+# Then calls build.bat to execute the build
 
 Write-Host ""
 Write-Host "========================================"
-Write-Host "   Meetily GPU Build (Signed)"
+Write-Host "   Meetily Build (Signed)"
 Write-Host "========================================"
 Write-Host ""
 
@@ -49,11 +49,11 @@ if ($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
 }
 Write-Host ""
 
-# Call the main build-gpu.bat script
+# Call the main build.bat script
 Write-Host "🚀 Starting build process..."
 Write-Host ""
 
-& ".\build-gpu.bat" $args
+& ".\build.bat" $args
 
 $buildExitCode = $LASTEXITCODE
 

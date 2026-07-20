@@ -36,9 +36,6 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3118') do (
     taskkill /PID %%a /F >nul 2>&1
 )
 
-REM Set libclang path for whisper-rs-sys
-set "LIBCLANG_PATH=C:\Program Files\LLVM\bin"
-
 REM Try to find and setup Visual Studio environment
 if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" (
     echo Setting up Visual Studio 2022 Build Tools environment...
@@ -107,9 +104,9 @@ REM if debug mode, run tauri dev
 if "%~1" == "debug" (
     echo Starting development mode...
     echo Running initial compilation check...
-   
-    echo ✅ Initial compilation check passed. Starting development server with Vulkan...
-    call pnpm run tauri:dev:vulkan
+
+    echo ✅ Initial compilation check passed. Starting development server...
+    call pnpm run tauri:dev
     if errorlevel 1 (
         echo Error: Failed to start Tauri development server
         exit /b 1
@@ -132,9 +129,9 @@ if "%~1" == "debug" (
 ) else (
     echo Building for production...
     echo Running pre-build compilation check...
-   
-    echo ✅ Pre-build check passed. Building for production with Vulkan...
-    call pnpm run tauri:build:vulkan
+
+    echo ✅ Pre-build check passed. Building for production...
+    call pnpm run tauri:build
     if errorlevel 1 (
         echo ❌ Error: Failed to build Tauri application for production
         exit /b 1
@@ -186,7 +183,6 @@ echo   The script automatically configures:
 echo   - Visual Studio build environment
 echo   - Windows SDK paths
 echo   - C++ runtime libraries
-echo   - LLVM/Clang paths for whisper-rs-sys
 echo.
 echo PORT MANAGEMENT:
 echo   Automatically kills processes on port 3118 before building
@@ -195,7 +191,6 @@ echo TROUBLESHOOTING:
 echo   If build fails, ensure:
 echo   - Visual Studio 2022 Build Tools are installed
 echo   - Windows SDK 10.0.22621.0 is installed
-echo   - LLVM is installed at C:^\Program Files^\LLVM^\bin
 echo   - All dependencies are properly installed
 echo.
 echo ========================================
