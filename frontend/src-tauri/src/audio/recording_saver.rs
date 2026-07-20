@@ -450,6 +450,16 @@ impl RecordingSaver {
             warn!("Failed to emit recording-saved event: {}", e);
         }
 
+        // Upload audio file to ai-meeting-agent API (Phase 2)
+        let final_audio_path_clone = final_audio_path.clone();
+        let meeting_name_clone = self.meeting_name.clone();
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = Self::upload_recording(&app_clone, &final_audio_path_clone, meeting_name_clone).await {
+                error!("Failed to upload recording: {}", e);
+            }
+        });
+
         // Clean up transcript segments
         if let Ok(mut segments) = self.transcript_segments.lock() {
             segments.clear();
@@ -475,6 +485,123 @@ impl RecordingSaver {
     /// Get meeting name (for reload sync)
     pub fn get_meeting_name(&self) -> Option<String> {
         self.meeting_name.clone()
+    }
+
+    /// Upload recording to ai-meeting-agent API
+    /// Falls back to offline queue on network failure
+    async fn upload_recording<R: Runtime>(
+        app: &AppHandle<R>,
+        audio_path: &PathBuf,
+        meeting_name: Option<String>,
+    ) -> Result<()> {
+        info!("Starting upload for recording: {:?}", audio_path);
+
+        // Get AppState with API client
+        let app_state = match app.try_state::<crate::state::AppState>() {
+            Some(state) => state,
+            None => {
+                warn!("AppState not available, skipping upload");
+                return Ok(());
+            }
+        };
+
+        // Emit upload start event
+        let _ = app.emit("upload-started", serde_json::json!({
+            "audio_file": audio_path.to_string_lossy(),
+            "meeting_name": meeting_name
+        }));
+
+        // Try to upload via API client
+        let client = app_state.api_client.read().await;
+        let queue = app_state.upload_queue.clone();
+        
+        match client.import_audio(audio_path, meeting_name.clone()).await {
+            Ok(response) => {
+                info!("Upload successful, job_id: {}", response.job_id);
+                
+                // Emit upload success event
+                let _ = app.emit("upload-success", serde_json::json!({
+                    "job_id": response.job_id,
+                    "audio_file": audio_path.to_string_lossy()
+                }));
+
+                // Start polling job status
+                let app_clone = app.clone();
+                let job_id = response.job_id.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = Self::poll_job_status(&app_clone, &job_id).await {
+                        error!("Job polling failed: {}", e);
+                    }
+                });
+
+                // Delete local audio file (upload-and-delete strategy)
+                if let Err(e) = tokio::fs::remove_file(audio_path).await {
+                    warn!("Failed to delete local audio file after upload: {}", e);
+                } else {
+                    info!("Local audio file deleted after successful upload");
+                }
+
+                Ok(())
+            }
+            Err(e) => {
+                error!("Upload failed, adding to offline queue: {}", e);
+                
+                // Add to offline queue for retry
+                if let Err(queue_err) = queue.enqueue(audio_path.clone(), meeting_name).await {
+                    error!("Failed to enqueue for retry: {}", queue_err);
+                }
+
+                // Emit upload failure event
+                let _ = app.emit("upload-failed", serde_json::json!({
+                    "audio_file": audio_path.to_string_lossy(),
+                    "error": e.to_string(),
+                    "queued_for_retry": true
+                }));
+
+                Err(anyhow::anyhow!("Upload failed: {}", e))
+            }
+        }
+    }
+
+    /// Poll job status until completion
+    async fn poll_job_status<R: Runtime>(
+        app: &AppHandle<R>,
+        job_id: &str,
+    ) -> Result<()> {
+        use crate::api_client::jobs::JobPoller;
+
+        info!("Starting job polling for: {}", job_id);
+
+        let app_state = app.try_state::<crate::state::AppState>()
+            .ok_or_else(|| anyhow::anyhow!("AppState not available"))?;
+
+        let client = app_state.api_client.read().await.clone();
+        let poller = JobPoller::new(client, job_id.to_string());
+
+        let app_clone = app.clone();
+        let final_status = poller.poll_until_complete(move |status| {
+            info!("Job {} status: {:?}", status.job_id, status.state);
+            
+            // Emit progress event
+            let _ = app_clone.emit("job-progress", serde_json::json!({
+                "job_id": status.job_id,
+                "state": format!("{:?}", status.state),
+                "progress": status.progress,
+                "meeting_id": status.meeting_id
+            }));
+        }).await?;
+
+        info!("Job {} completed with state: {:?}", job_id, final_status.state);
+
+        // Emit final completion event
+        let _ = app.emit("job-completed", serde_json::json!({
+            "job_id": final_status.job_id,
+            "state": format!("{:?}", final_status.state),
+            "meeting_id": final_status.meeting_id,
+            "error": final_status.error
+        }));
+
+        Ok(())
     }
 }
 
