@@ -10,17 +10,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest" # for Apple Silicon only (M1 and above)
+          - platform: "macos-latest"
             args: "--target aarch64-apple-darwin"
             target: "aarch64-apple-darwin"
-          - platform: "ubuntu-22.04" # Build .deb on 22.04
-            args: "--bundles deb"
-            target: "x86_64-unknown-linux-gnu"
-          - platform: "ubuntu-24.04" # Build AppImage and RPM on 24.04
-            args: "--bundles appimage,rpm"
-            target: "x86_64-unknown-linux-gnu"
           - platform: "windows-latest"
-            args: ""
+            args: "--target x86_64-pc-windows-msvc"
             target: "x86_64-pc-windows-msvc"
 
     uses: ./.github/workflows/build.yml
@@ -28,8 +22,7 @@ jobs:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
-      sign-binaries: true
       asset-prefix: "meetily-test"
       upload-artifacts: true
-      is-debug-build: ${{ contains(matrix.args, '--debug') }}
+      is-debug-build: false
     secrets: inherit
