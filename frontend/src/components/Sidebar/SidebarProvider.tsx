@@ -287,6 +287,52 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     };
   }, [activeSummaryPolls]);
 
+  // Listen for upload and job progress events (Phase 2)
+  useEffect(() => {
+    let unlistenUploadStarted: (() => void) | undefined;
+    let unlistenUploadSuccess: (() => void) | undefined;
+    let unlistenUploadFailed: (() => void) | undefined;
+    let unlistenJobProgress: (() => void) | undefined;
+    let unlistenJobCompleted: (() => void) | undefined;
+
+    const setupListeners = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+
+      unlistenUploadStarted = await listen('upload-started', (event: any) => {
+        console.log('📤 Upload started:', event.payload);
+      });
+
+      unlistenUploadSuccess = await listen('upload-success', (event: any) => {
+        console.log('✅ Upload success:', event.payload);
+        // Refetch meetings to show the new meeting from API
+        fetchMeetings();
+      });
+
+      unlistenUploadFailed = await listen('upload-failed', (event: any) => {
+        console.warn('❌ Upload failed:', event.payload);
+      });
+
+      unlistenJobProgress = await listen('job-progress', (event: any) => {
+        console.log('⏳ Job progress:', event.payload);
+      });
+
+      unlistenJobCompleted = await listen('job-completed', (event: any) => {
+        console.log('🎉 Job completed:', event.payload);
+        // Refetch meetings to get updated transcript/summary status
+        fetchMeetings();
+      });
+    };
+
+    setupListeners();
+
+    return () => {
+      unlistenUploadStarted?.();
+      unlistenUploadSuccess?.();
+      unlistenUploadFailed?.();
+      unlistenJobProgress?.();
+      unlistenJobCompleted?.();
+    };
+  }, [fetchMeetings]);
 
 
   return (
