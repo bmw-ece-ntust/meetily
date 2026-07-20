@@ -54,25 +54,7 @@ function transcriptFromSegments(segments: TranscriptSegment[] = []): Transcript[
 }
 
 function summaryToMarkdown(summary: ApiSummary): Summary {
-  const sections: string[] = [];
-
-  if (summary.content?.trim()) {
-    sections.push(summary.content.trim());
-  }
-
-  if (summary.key_points?.length) {
-    sections.push(['## Key Points', ...summary.key_points.map((item) => `- ${item}`)].join('\n'));
-  }
-
-  if (summary.action_items?.length) {
-    sections.push(['## Action Items', ...summary.action_items.map((item) => `- ${item}`)].join('\n'));
-  }
-
-  if (summary.decisions?.length) {
-    sections.push(['## Decisions', ...summary.decisions.map((item) => `- ${item}`)].join('\n'));
-  }
-
-  return { markdown: sections.join('\n\n') || summary.content || '' } as any;
+  return { markdown: summary.content?.trim() || '' } as any;
 }
 
 export const meetingApiService = {
