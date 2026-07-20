@@ -8,7 +8,7 @@ use crate::{
     database::{
         models::MeetingModel,
         repositories::{
-            meeting::MeetingsRepository, setting::SettingsRepository,
+            setting::SettingsRepository,
             transcript::TranscriptsRepository,
         },
     },

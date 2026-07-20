@@ -1,6 +1,6 @@
 use crate::database::repositories::{
     meeting::MeetingsRepository,
-    summary::SummaryProcessesRepository, transcript_chunk::TranscriptChunksRepository,
+    summary::SummaryProcessesRepository,
 };
 use crate::state::AppState;
 use crate::summary::metadata::{
@@ -10,7 +10,6 @@ use crate::summary::metadata::{
 use crate::summary::language_detection::{
     detect_summary_language, SummaryLanguageDetection,
 };
-use crate::summary::service::SummaryService;
 use log::{error as log_error, info as log_info, warn as log_warn, debug as log_debug};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -338,13 +337,13 @@ pub async fn api_get_summary<R: Runtime>(
 pub async fn api_process_transcript<R: Runtime>(
     app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
-    text: String,
+    _text: String,
     model: String,
-    model_name: String,
+    _model_name: String,
     meeting_id: Option<String>,
     _chunk_size: Option<i32>,
     _overlap: Option<i32>,
-    custom_prompt: Option<String>,
+    _custom_prompt: Option<String>,
     template_id: Option<String>,
     summary_language: Option<String>,
     _auth_token: Option<String>,
@@ -529,7 +528,7 @@ async fn poll_summary_job<R: Runtime>(
 #[tauri::command]
 pub async fn api_cancel_summary<R: Runtime>(
     _app: AppHandle<R>,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     meeting_id: String,
 ) -> Result<serde_json::Value, String> {
     log_info!("api_cancel_summary called for meeting_id: {}", meeting_id);
