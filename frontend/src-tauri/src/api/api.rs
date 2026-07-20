@@ -325,29 +325,49 @@ pub async fn api_get_meetings<R: Runtime>(
     auth_token: Option<String>,
 ) -> Result<Vec<Meeting>, String> {
     log_info!(
-        "api_get_meetings called with auth_token(native) : {}",
+        "api_get_meetings called with auth_token: {}",
         auth_token.is_some()
     );
-    let pool = state.db_manager.pool();
-    let meetings: Result<Vec<MeetingModel>, sqlx::Error> =
-        MeetingsRepository::get_meetings(pool).await;
 
-    match meetings {
-        Ok(meeting_models) => {
-            log_info!("Successfully got {} meetings", meeting_models.len());
+    // Use API client to fetch meetings from ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
 
-            let result: Vec<Meeting> = meeting_models
+    // Check cache first
+    if let Some(cached_meetings) = cache.get_all_meetings().await {
+        log_info!("Using cached meetings list ({} meetings)", cached_meetings.len());
+        let result: Vec<Meeting> = cached_meetings
+            .into_iter()
+            .map(|m| Meeting {
+                id: m.meeting_id,
+                title: m.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+            })
+            .collect();
+        return Ok(result);
+    }
+
+    // Fetch from API
+    match client.list_meetings(None, None).await {
+        Ok(response) => {
+            log_info!("Successfully retrieved {} meetings from API", response.meetings.len());
+
+            // Cache all meetings
+            for meeting in &response.meetings {
+                cache.set_meeting(meeting.meeting_id.clone(), meeting.clone()).await;
+            }
+
+            let result: Vec<Meeting> = response.meetings
                 .into_iter()
                 .map(|m| Meeting {
-                    id: m.id,
-                    title: m.title,
+                    id: m.meeting_id,
+                    title: m.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
                 })
                 .collect();
             Ok(result)
         }
         Err(e) => {
-            log_error!("Error getting meetings: {}", e);
-            Err(e.to_string())
+            log_error!("Error retrieving meetings from API: {}", e);
+            Err(format!("Failed to retrieve meetings: {}", e))
         }
     }
 }
@@ -365,21 +385,48 @@ pub async fn api_search_transcripts<R: Runtime>(
         auth_token.is_some()
     );
 
-    let pool = state.db_manager.pool();
+    // Global search across all meetings using API client
+    let client = state.api_client.read().await;
 
-    match TranscriptsRepository::search_transcripts(pool, &query).await {
-        Ok(results) => {
-            log_info!(
-                "Search completed successfully with {} results.",
-                results.len()
-            );
-            Ok(results)
-        }
+    // First, get all meetings
+    let meetings_response = match client.list_meetings(None, None).await {
+        Ok(resp) => resp,
         Err(e) => {
-            log_error!("Error searching transcripts for query '{}': {}", query, e);
-            Err(format!("Failed to search transcripts: {}", e))
+            log_error!("Error listing meetings for search: {}", e);
+            return Err(format!("Failed to list meetings: {}", e));
+        }
+    };
+
+    let mut all_results = Vec::new();
+
+    // Search each meeting's transcript
+    for meeting in meetings_response.meetings {
+        match client.search_transcript(&meeting.meeting_id, &query, None, None).await {
+            Ok(search_response) => {
+                // Convert API search results to TranscriptSearchResult format
+                for result in search_response.results {
+                    all_results.push(TranscriptSearchResult {
+                        id: format!("{}_{}", meeting.meeting_id, result.segment_id),
+                        title: meeting.title.clone().unwrap_or_else(|| "Untitled Meeting".to_string()),
+                        match_context: result.text.clone(),
+                        timestamp: format!("{:.2}", result.start),
+                    });
+                }
+            }
+            Err(e) => {
+                // Log error but continue searching other meetings
+                log_warn!("Error searching meeting {}: {}", meeting.meeting_id, e);
+            }
         }
     }
+
+    log_info!(
+        "Search completed successfully with {} results from API across {} meetings.",
+        all_results.len(),
+        meetings_response.meetings.len()
+    );
+
+    Ok(all_results)
 }
 
 #[tauri::command]
@@ -748,30 +795,29 @@ pub async fn api_delete_meeting<R: Runtime>(
     auth_token: Option<String>,
 ) -> Result<serde_json::Value, String> {
     log_info!(
-        "api_delete_meeting called for meeting_id(native): {}, auth_token: {}",
+        "api_delete_meeting called for meeting_id: {}, auth_token: {}",
         meeting_id,
         auth_token.is_some()
     );
 
-    let pool = state.db_manager.pool();
+    // Use API client to delete meeting from ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
 
-    match MeetingsRepository::delete_meeting(pool, &meeting_id).await {
-        Ok(true) => {
-            log_info!("Successfully deleted meeting {}", meeting_id);
+    match client.delete_meeting(&meeting_id).await {
+        Ok(_) => {
+            log_info!("Successfully deleted meeting {} from API", meeting_id);
+            
+            // Clear from cache
+            cache.invalidate_meeting(&meeting_id).await;
+
             Ok(serde_json::json!({
                 "status": "success",
                 "message": "Meeting deleted successfully"
             }))
         }
-        Ok(false) => {
-            log_warn!("Meeting not found or already deleted: {}", meeting_id);
-            Err(format!(
-                "Meeting not found or could not be deleted: {}",
-                meeting_id
-            ))
-        }
         Err(e) => {
-            log_error!("Error deleting meeting {}: {}", meeting_id, e);
+            log_error!("Error deleting meeting {} from API: {}", meeting_id, e);
             Err(format!("Failed to delete meeting: {}", e))
         }
     }
@@ -785,24 +831,69 @@ pub async fn api_get_meeting<R: Runtime>(
     auth_token: Option<String>,
 ) -> Result<MeetingDetails, String> {
     log_info!(
-        "api_get_meeting called(native) for meeting_id: {}, auth_token: {}",
+        "api_get_meeting called for meeting_id: {}, auth_token: {}",
         meeting_id,
         auth_token.is_some()
     );
 
-    let pool = state.db_manager.pool();
+    // Use API client to fetch meeting from ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
 
-    match MeetingsRepository::get_meeting(pool, &meeting_id).await {
-        Ok(Some(meeting)) => {
-            log_info!("Successfully retrieved meeting {}", meeting_id);
-            Ok(meeting)
-        }
-        Ok(None) => {
-            log_warn!("Meeting not found: {}", meeting_id);
-            Err(format!("Meeting not found: {}", meeting_id))
+    // Check cache first
+    if let Some(cached_meeting) = cache.get_meeting(&meeting_id).await {
+        log_info!("Using cached meeting for {}", meeting_id);
+        return Ok(MeetingDetails {
+            id: cached_meeting.meeting_id,
+            title: cached_meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+            created_at: crate::database::models::DateTimeUtc(
+                chrono::DateTime::parse_from_rfc3339(
+                    &cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+                )
+                .unwrap_or_else(|_| chrono::Utc::now().into())
+                .with_timezone(&chrono::Utc)
+            ),
+            updated_at: crate::database::models::DateTimeUtc(
+                chrono::DateTime::parse_from_rfc3339(
+                    &cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+                )
+                .unwrap_or_else(|_| chrono::Utc::now().into())
+                .with_timezone(&chrono::Utc)
+            ),
+            folder_path: None, // API doesn't provide folder_path
+        });
+    }
+
+    // Fetch from API
+    match client.get_meeting(&meeting_id).await {
+        Ok(meeting) => {
+            log_info!("Successfully retrieved meeting {} from API", meeting_id);
+            
+            // Cache the meeting
+            cache.set_meeting(meeting_id.clone(), meeting.clone()).await;
+
+            Ok(MeetingDetails {
+                id: meeting.meeting_id,
+                title: meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+                created_at: crate::database::models::DateTimeUtc(
+                    chrono::DateTime::parse_from_rfc3339(
+                        &meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+                    )
+                    .unwrap_or_else(|_| chrono::Utc::now().into())
+                    .with_timezone(&chrono::Utc)
+                ),
+                updated_at: crate::database::models::DateTimeUtc(
+                    chrono::DateTime::parse_from_rfc3339(
+                        &meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+                    )
+                    .unwrap_or_else(|_| chrono::Utc::now().into())
+                    .with_timezone(&chrono::Utc)
+                ),
+                folder_path: None, // API doesn't provide folder_path
+            })
         }
         Err(e) => {
-            log_error!("Error retrieving meeting {}: {}", meeting_id, e);
+            log_error!("Error retrieving meeting {} from API: {}", meeting_id, e);
             Err(format!("Failed to retrieve meeting: {}", e))
         }
     }
@@ -817,25 +908,40 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
 ) -> Result<MeetingMetadata, String> {
     log_info!("api_get_meeting_metadata called for meeting_id: {}", meeting_id);
 
-    let pool = state.db_manager.pool();
+    // Use API client to fetch metadata from ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
 
-    match MeetingsRepository::get_meeting_metadata(pool, &meeting_id).await {
-        Ok(Some(meeting)) => {
-            log_info!("Successfully retrieved meeting metadata {}", meeting_id);
+    // Check cache first
+    if let Some(cached_meeting) = cache.get_meeting(&meeting_id).await {
+        log_info!("Using cached meeting metadata for {}", meeting_id);
+        return Ok(MeetingMetadata {
+            id: cached_meeting.meeting_id,
+            title: cached_meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+            created_at: cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+            updated_at: cached_meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+            folder_path: None, // API doesn't provide folder_path
+        });
+    }
+
+    // Fetch from API
+    match client.get_meeting(&meeting_id).await {
+        Ok(meeting) => {
+            log_info!("Successfully retrieved meeting metadata from API: {}", meeting_id);
+            
+            // Cache the meeting
+            cache.set_meeting(meeting_id.clone(), meeting.clone()).await;
+
             Ok(MeetingMetadata {
-                id: meeting.id,
-                title: meeting.title,
-                created_at: meeting.created_at.0.to_rfc3339(),
-                updated_at: meeting.updated_at.0.to_rfc3339(),
-                folder_path: meeting.folder_path,
+                id: meeting.meeting_id,
+                title: meeting.title.unwrap_or_else(|| "Untitled Meeting".to_string()),
+                created_at: meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+                updated_at: meeting.date.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+                folder_path: None, // API doesn't provide folder_path
             })
         }
-        Ok(None) => {
-            log_warn!("Meeting not found: {}", meeting_id);
-            Err(format!("Meeting not found: {}", meeting_id))
-        }
         Err(e) => {
-            log_error!("Error retrieving meeting metadata {}: {}", meeting_id, e);
+            log_error!("Error retrieving meeting metadata from API {}: {}", meeting_id, e);
             Err(format!("Failed to retrieve meeting metadata: {}", e))
         }
     }
@@ -857,40 +963,93 @@ pub async fn api_get_meeting_transcripts<R: Runtime>(
         offset
     );
 
-    let pool = state.db_manager.pool();
+    // Use API client to fetch transcripts from ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
 
-    match MeetingsRepository::get_meeting_transcripts_paginated(pool, &meeting_id, limit, offset).await {
-        Ok((transcripts, total_count)) => {
-            log_info!(
-                "Successfully retrieved {} transcripts for meeting {} (total: {})",
-                transcripts.len(),
-                meeting_id,
-                total_count
-            );
+    // Check cache first
+    if let Some(cached_transcript) = cache.get_transcript(&meeting_id).await {
+        log_info!("Using cached transcript for meeting {}", meeting_id);
+        
+        // Apply pagination to cached segments
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        let segments = &cached_transcript.segments;
+        
+        let paginated_segments = if start < segments.len() {
+            segments[start..end.min(segments.len())].to_vec()
+        } else {
+            vec![]
+        };
 
-            // Convert Transcript to MeetingTranscript
-            let meeting_transcripts = transcripts
-                .into_iter()
-                .map(|t| MeetingTranscript {
-                    id: t.id,
-                    text: t.transcript,
-                    timestamp: t.timestamp,
-                    audio_start_time: t.audio_start_time,
-                    audio_end_time: t.audio_end_time,
-                    duration: t.duration,
-                })
-                .collect::<Vec<_>>();
-
-            let has_more = (offset + meeting_transcripts.len() as i64) < total_count;
-
-            Ok(PaginatedTranscriptsResponse {
-                transcripts: meeting_transcripts,
-                total_count,
-                has_more,
+        // Convert API segments to MeetingTranscript format
+        let meeting_transcripts = paginated_segments
+            .into_iter()
+            .map(|s| MeetingTranscript {
+                id: s.id.to_string(),
+                text: s.text,
+                timestamp: format!("{:.2}", s.start),
+                audio_start_time: Some(s.start),
+                audio_end_time: Some(s.end),
+                duration: Some(s.end - s.start),
             })
+            .collect::<Vec<_>>();
+
+        let total_count = segments.len() as i64;
+        let has_more = (offset + meeting_transcripts.len() as i64) < total_count;
+
+        return Ok(PaginatedTranscriptsResponse {
+            transcripts: meeting_transcripts,
+            total_count,
+            has_more,
+        });
+    }
+
+    // Fetch from API
+    match client.get_transcript(&meeting_id, Some(limit as u64), Some(offset as u64)).await {
+        Ok(response) => {
+            if let Some(transcript) = response.transcript {
+                log_info!(
+                    "Successfully retrieved {} transcript segments for meeting {} (total: {})",
+                    transcript.segments.len(),
+                    meeting_id,
+                    response.total_segments
+                );
+
+                // Cache the full transcript
+                cache.set_transcript(meeting_id.clone(), transcript.clone()).await;
+
+                // Convert API segments to MeetingTranscript format
+                let meeting_transcripts = transcript.segments
+                    .into_iter()
+                    .map(|s| MeetingTranscript {
+                        id: s.id.to_string(),
+                        text: s.text,
+                        timestamp: format!("{:.2}", s.start),
+                        audio_start_time: Some(s.start),
+                        audio_end_time: Some(s.end),
+                        duration: Some(s.end - s.start),
+                    })
+                    .collect::<Vec<_>>();
+
+                let has_more = (offset + meeting_transcripts.len() as i64) < response.total_segments as i64;
+
+                Ok(PaginatedTranscriptsResponse {
+                    transcripts: meeting_transcripts,
+                    total_count: response.total_segments as i64,
+                    has_more,
+                })
+            } else {
+                log_info!("No transcript available for meeting {}", meeting_id);
+                Ok(PaginatedTranscriptsResponse {
+                    transcripts: vec![],
+                    total_count: 0,
+                    has_more: false,
+                })
+            }
         }
         Err(e) => {
-            log_error!("Error retrieving transcripts for meeting {}: {}", meeting_id, e);
+            log_error!("Error retrieving transcripts from API for meeting {}: {}", meeting_id, e);
             Err(format!("Failed to retrieve transcripts: {}", e))
         }
     }
@@ -909,18 +1068,22 @@ pub async fn api_save_meeting_title<R: Runtime>(
         meeting_id,
         auth_token.is_some()
     );
-    let pool = state.db_manager.pool();
-    match MeetingsRepository::update_meeting_title(pool, &meeting_id, &title).await {
-        Ok(true) => {
-            log_info!("Successfully saved meeting title");
+
+    // Use API client to update meeting title in ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
+
+    match client.update_meeting(&meeting_id, Some(&title), None).await {
+        Ok(meeting) => {
+            log_info!("Successfully saved meeting title for {}", meeting_id);
+            
+            // Update cache
+            cache.set_meeting(meeting_id.clone(), meeting).await;
+
             Ok(serde_json::json!({"message": "Meeting title saved successfully"}))
         }
-        Ok(false) => {
-            log_error!("No meeting found with id {}", meeting_id);
-            Err(format!("No meeting found with id {}", meeting_id))
-        }
         Err(e) => {
-            log_error!("Failed to update meeting {}", e);
+            log_error!("Failed to update meeting title for {}: {}", meeting_id, e);
             Err(format!("Failed to update meeting: {}", e))
         }
     }

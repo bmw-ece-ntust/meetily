@@ -234,87 +234,99 @@ pub async fn api_get_summary<R: Runtime>(
     _auth_token: Option<String>,
 ) -> Result<SummaryResponse, String> {
     log_info!(
-        "api_get_summary (native) called for meeting_id: {}",
+        "api_get_summary called for meeting_id: {}",
         meeting_id
     );
-    let pool = state.db_manager.pool();
 
-    match SummaryProcessesRepository::get_summary_data_for_meeting(pool, &meeting_id).await {
-        Ok(Some(process)) => {
-            let status = process.status.to_lowercase();
-            let error = process.error;
+    // Use API client to fetch summary from ai-meeting-agent
+    let client = state.api_client.read().await;
+    let cache = state.memory_cache.clone();
 
-            // Parse result data if it exists (regardless of status)
-            // This allows displaying restored summaries after cancellation or failure
-            let data = if let Some(result_str) = process.result {
-                match serde_json::from_str::<serde_json::Value>(&result_str) {
-                    Ok(parsed) => Some(parsed),
-                    Err(e) => {
-                        log_error!("Failed to parse summary result JSON: {}", e);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
+    // Check cache first
+    if let Some(cached_summaries) = cache.get_summaries(&meeting_id).await {
+        log_info!("Using cached summaries for meeting {}", meeting_id);
+        
+        // Find the "full" template summary (or first available)
+        if let Some(summary) = cached_summaries.iter().find(|s| matches!(s.template, crate::api_client::types::SummaryTemplate::Full))
+            .or_else(|| cached_summaries.first()) 
+        {
+            let data = serde_json::json!({
+                "id": summary.id,
+                "content": summary.content,
+                "key_points": summary.key_points,
+                "action_items": summary.action_items,
+                "decisions": summary.decisions,
+            });
 
-            // Fetch meeting title from database
-            let meeting_name = match MeetingsRepository::get_meeting(pool, &meeting_id).await {
-                Ok(Some(meeting_details)) => {
-                    log_info!("Fetched meeting title: {}", &meeting_details.title);
-                    Some(meeting_details.title)
-                }
-                Ok(None) => {
-                    log_warn!("Meeting not found for meeting_id: {}", meeting_id);
-                    None
-                }
-                Err(e) => {
-                    log_error!("Failed to fetch meeting title: {}", e);
-                    None
-                }
-            };
-
-            let response = SummaryResponse {
-                status: status.clone(),
-                meeting_name,
+            return Ok(SummaryResponse {
+                status: summary.status.to_string().to_lowercase(),
+                meeting_name: None, // Will be fetched separately by frontend if needed
                 meeting_id: meeting_id.clone(),
-                start: process.start_time.map(|t| t.to_rfc3339()),
-                end: process.end_time.map(|t| t.to_rfc3339()),
-                data,
-                error,
-            };
-
-            log_info!(
-                "Summary status for {}: {}, has_data: {}, meeting_name: {:?}",
-                meeting_id,
-                status,
-                response.data.is_some(),
-                response.meeting_name
-            );
-            Ok(response)
+                start: None,
+                end: None,
+                data: Some(data),
+                error: None,
+            });
         }
-        Ok(None) => {
-            log_info!("No summary process found for meeting_id: {}", meeting_id);
+    }
 
-            // Still fetch meeting title for idle state
-            let meeting_name = match MeetingsRepository::get_meeting(pool, &meeting_id).await {
-                Ok(Some(meeting_details)) => Some(meeting_details.title),
-                _ => None,
-            };
+    // Fetch from API
+    match client.list_summaries(&meeting_id).await {
+        Ok(summaries_response) => {
+            log_info!("Successfully retrieved {} summaries from API for meeting {}", 
+                summaries_response.summaries.len(), meeting_id);
 
+            // Cache all summaries
+            cache.set_summaries(meeting_id.clone(), summaries_response.summaries.clone()).await;
+
+            // Find the "full" template summary (or first available)
+            if let Some(summary) = summaries_response.summaries.iter()
+                .find(|s| matches!(s.template, crate::api_client::types::SummaryTemplate::Full))
+                .or_else(|| summaries_response.summaries.first())
+            {
+                let data = serde_json::json!({
+                    "id": summary.id,
+                    "content": summary.content,
+                    "key_points": summary.key_points,
+                    "action_items": summary.action_items,
+                    "decisions": summary.decisions,
+                });
+
+                Ok(SummaryResponse {
+                    status: summary.status.to_string().to_lowercase(),
+                    meeting_name: None, // Will be fetched separately by frontend if needed
+                    meeting_id: meeting_id.clone(),
+                    start: None,
+                    end: None,
+                    data: Some(data),
+                    error: None,
+                })
+            } else {
+                log_info!("No summaries found for meeting {}", meeting_id);
+                Ok(SummaryResponse {
+                    status: "idle".to_string(),
+                    meeting_name: None,
+                    meeting_id,
+                    start: None,
+                    end: None,
+                    data: None,
+                    error: None,
+                })
+            }
+        }
+        Err(e) => {
+            log_error!("Error retrieving summaries from API for meeting {}: {}", meeting_id, e);
+            
+            // Return idle state instead of error for better UX
             Ok(SummaryResponse {
                 status: "idle".to_string(),
-                meeting_name,
+                meeting_name: None,
                 meeting_id,
                 start: None,
                 end: None,
                 data: None,
-                error: None,
+                error: Some(format!("Failed to retrieve summary: {}", e)),
             })
-        }
-        Err(e) => {
-            log_error!("Error retrieving summary for {}: {}", meeting_id, e);
-            Err(format!("Failed to retrieve summary: {}", e))
         }
     }
 }
