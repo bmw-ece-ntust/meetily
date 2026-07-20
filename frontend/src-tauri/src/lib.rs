@@ -43,12 +43,7 @@ pub mod config;
 pub mod console_utils;
 pub mod database;
 pub mod notifications;
-pub mod ollama;
 pub mod onboarding;
-pub mod openai;
-pub mod anthropic;
-pub mod groq;
-pub mod openrouter;
 pub mod state;
 pub mod summary;
 pub mod tray;
@@ -622,13 +617,6 @@ pub fn run() {
             console_utils::show_console,
             console_utils::hide_console,
             console_utils::toggle_console,
-            ollama::get_ollama_models,
-            ollama::pull_ollama_model,
-            ollama::delete_ollama_model,
-            ollama::get_ollama_model_context,
-            openai::openai::get_openai_models,
-            anthropic::anthropic::get_anthropic_models,
-            groq::groq::get_groq_models,
             api::api_get_meetings,
             api::api_search_transcripts,
             api::api_get_profile,
@@ -679,7 +667,6 @@ pub fn run() {
             summary::summary_engine::commands::builtin_ai_is_model_ready,
             summary::summary_engine::commands::builtin_ai_get_available_summary_model,
             summary::summary_engine::commands::builtin_ai_get_recommended_model,
-            openrouter::get_openrouter_models,
             audio::recording_preferences::get_recording_preferences,
             audio::recording_preferences::set_recording_preferences,
             audio::recording_preferences::get_default_recordings_folder_path,
