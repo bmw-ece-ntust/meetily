@@ -128,14 +128,14 @@ Build from source following our detailed guides:
 git clone https://github.com/Zackriya-Solutions/meeting-minutes
 cd meeting-minutes/frontend
 pnpm install
-./build-gpu.sh
+pnpm run tauri:dev
 ```
 
 ## Key Features in Action
 
-### 🎯 Local Transcription
+### 🎯 AI-Powered Transcription
 
-Transcribe meetings entirely on your device using **Whisper** or **Parakeet** models. No cloud required.
+Transcribe meetings using the **ai-meeting-agent API**. Audio is recorded locally, then sent to the API server for processing.
 
 <p align="center">
     <img src="docs/home.png" width="650" style="border-radius: 10px;" alt="Meetily Demo" />
@@ -143,7 +143,7 @@ Transcribe meetings entirely on your device using **Whisper** or **Parakeet** mo
 
 ### 📥 Import & Enhance `Beta`
 
-Import existing audio files to generate transcripts, or enhance to re-transcribe any recorded meeting with a different model or language, all processed locally.
+Import existing audio files to generate transcripts, or enhance to re-transcribe any recorded meeting with a different language setting via the ai-meeting-agent API.
 
 > Contributed by [Jeremi Joslin](https://github.com/jeremi), improved by [Vishnu P S](https://github.com/p-s-vishnu) and [Mohammed Safvan](https://github.com/mohammedsafvan)
 
@@ -187,18 +187,9 @@ Capture microphone and system audio simultaneously with intelligent ducking and 
     <img src="docs/audio.png" width="650" style="border-radius: 10px;" alt="Device selection" />
 </p>
 
-### ⚡ GPU Acceleration
-
-Built-in support for hardware acceleration across platforms:
-
-- **macOS**: Apple Silicon (Metal) + CoreML
-- **Windows/Linux**: NVIDIA (CUDA), AMD/Intel (Vulkan)
-
-Automatically enabled at build time - no configuration needed.
-
 ## System Architecture
 
-Meetily is a single, self-contained application built with [Tauri](https://tauri.app/). It uses a Rust-based backend to handle all the core logic, and a Next.js frontend for the user interface.
+Meetily is a single, self-contained application built with [Tauri](https://tauri.app/). It uses a Rust-based backend to handle all the core logic, and a Next.js frontend for the user interface. Transcription is handled by the ai-meeting-agent REST API.
 
 For more details, see the [Architecture documentation](docs/architecture.md).
 
@@ -260,11 +251,8 @@ MIT License - Feel free to use this project for your own purposes.
 
 ## Acknowledgments
 
-- We borrowed some code from [Whisper.cpp](https://github.com/ggerganov/whisper.cpp).
 - We borrowed some code from [Screenpipe](https://github.com/mediar-ai/screenpipe).
 - We borrowed some code from [transcribe-rs](https://crates.io/crates/transcribe-rs).
-- Thanks to **NVIDIA** for developing the **Parakeet** model.
-- Thanks to [istupakov](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) for providing the **ONNX conversion** of the Parakeet model.
 
 ## Star History
 
