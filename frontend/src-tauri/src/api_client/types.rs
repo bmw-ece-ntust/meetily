@@ -99,6 +99,26 @@ pub struct UpdateMeetingRequest {
 // Transcript Types
 // ============================================================================
 
+/// Local database types for meeting details (used by database repository layer)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingDetails {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub transcripts: Vec<MeetingTranscript>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingTranscript {
+    pub id: i32,
+    pub text: String,
+    pub timestamp: Option<String>,
+    pub audio_start_time: Option<f64>,
+    pub audio_end_time: Option<f64>,
+    pub duration: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptResponse {
     pub meeting_id: String,

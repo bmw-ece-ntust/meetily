@@ -1,14 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Info } from 'lucide-react';
+import { Database, Server, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 export function SetupOverviewStep() {
   const { goNext } = useOnboarding();
@@ -28,15 +22,24 @@ export function SetupOverviewStep() {
 
   const steps = [
     {
-      number: 1,
-      type: 'transcription',
-      title: 'Download Transcription Engine',
+      icon: <Database className="w-5 h-5 text-gray-600" />,
+      title: 'Initialize Local Database',
+      description: 'Set up local storage for your meeting records',
     },
     {
-      number: 2,
-      type: 'summarization',
-      title: 'Download Summarization Engine',
+      icon: <Server className="w-5 h-5 text-gray-600" />,
+      title: 'Configure API Connection',
+      description: 'Connect to your AI processing server',
     },
+    ...(isMac
+      ? [
+          {
+            icon: <Mic className="w-5 h-5 text-gray-600" />,
+            title: 'Grant Permissions',
+            description: 'Allow microphone and system audio access',
+          },
+        ]
+      : []),
   ];
 
   const handleContinue = () => {
@@ -46,47 +49,27 @@ export function SetupOverviewStep() {
   return (
     <OnboardingContainer
       title="Setup Overview"
-      description="Meetily requires that you download the Transcription & Summarization AI models for the software to work."
-      step={2}
-      totalSteps={isMac ? 4 : 3}
+      description="Meetily will guide you through a quick setup process"
+      step={1}
+      totalSteps={isMac ? 3 : 2}
     >
       <div className="flex flex-col items-center space-y-10">
         {/* Steps Card */}
-        <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 p-4">
-          <div className="space-y-4">
-            {steps.map((step, idx) => {
-              return (
-                <div
-                  key={step.number}
-                  className={`flex items-start gap-4 p-1`}
-                >
-                  <div className="flex-1 ml-1">
-                    <h3 className="font-medium text-gray-900 flex items-center gap-2">
-                        Step {step.number} :  {step.title}
-
-                        {step.type === "summarization" && (
-                            <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                <button className="text-gray-400 hover:text-gray-600">
-                                    <Info className="w-4 h-4" />
-                                </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs text-sm">
-                                You can also select external AI providers like OpenAI, Claude, or
-                                Ollama for summary generation in settings.
-                                </TooltipContent>
-                            </Tooltip>
-                            </TooltipProvider>
-                        )}
-                        </h3>
-                  </div>
+        <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 p-6">
+          <div className="space-y-6">
+            {steps.map((step, idx) => (
+              <div key={idx} className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  {step.icon}
                 </div>
-              );
-            })}
+                <div className="flex-1">
+                  <h3 className="font-medium text-gray-900">{step.title}</h3>
+                  <p className="text-sm text-gray-600 mt-1">{step.description}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-
 
         {/* CTA Section */}
         <div className="w-full max-w-xs space-y-4">

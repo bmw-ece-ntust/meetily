@@ -2,8 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useSidebar } from './Sidebar/SidebarProvider';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
-import { useOllamaDownload } from '@/contexts/OllamaDownloadContext';
-import { BuiltInModelManager } from '@/components/BuiltInModelManager';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -165,9 +163,6 @@ export function ModelSettingsModal({
   const [isLoadingOpenAI, setIsLoadingOpenAI] = useState<boolean>(false);
   const [isLoadingClaude, setIsLoadingClaude] = useState<boolean>(false);
   const [isLoadingGroq, setIsLoadingGroq] = useState<boolean>(false);
-
-  // Use global download context instead of local state
-  const { isDownloading, getProgress, downloadingModels } = useOllamaDownload();
 
   // Built-in AI models state
   const [builtinAiModels, setBuiltinAiModels] = useState<any[]>([]);
@@ -698,53 +693,7 @@ export function ModelSettingsModal({
     }
   };
 
-  // Function to download recommended model
-  const downloadRecommendedModel = async () => {
-    const recommendedModel = 'gemma3:1b';
-
-    // Prevent duplicate downloads (defense in depth - backend also checks)
-    if (isDownloading(recommendedModel)) {
-      toast.info(`${recommendedModel} is already downloading`, {
-        description: `Progress: ${Math.round(getProgress(recommendedModel) || 0)}%`
-      });
-      return;
-    }
-
-    try {
-      const endpoint = ollamaEndpoint.trim() || null;
-
-      // The download will be tracked by the global context via events
-      // Progress toasts are shown automatically by OllamaDownloadContext
-      await invoke('pull_ollama_model', {
-        modelName: recommendedModel,
-        endpoint
-      });
-
-      // Refresh the models list after successful download
-      await fetchOllamaModels(true);
-
-      // Note: Model is NOT auto-selected - user must explicitly choose it
-      // This respects the database as the single source of truth
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to download model';
-      console.error('Error downloading model:', err);
-
-      // Check if Ollama is not installed and show appropriate error
-      if (isOllamaNotInstalledError(errorMsg)) {
-        toast.error('Ollama is not installed', {
-          description: 'Please download and install Ollama before downloading models.',
-          duration: 7000,
-          action: {
-            label: 'Download',
-            onClick: () => invoke('open_external_url', { url: 'https://ollama.com/download' })
-          }
-        });
-        // Update the installation status flag
-        setOllamaNotInstalled(true);
-      }
-      // Other errors are handled by the context
-    }
-  };
+  // Function removed: downloadRecommendedModel (Ollama local models deprecated)
 
   // Function to delete Ollama model
   const deleteOllamaModel = async (modelName: string) => {
@@ -764,27 +713,7 @@ export function ModelSettingsModal({
     }
   };
 
-  // Track previous downloading models to detect completions
-  const previousDownloadingRef = useRef<Set<string>>(new Set());
-
-  // Refresh models list when download completes
-  useEffect(() => {
-    const current = downloadingModels;
-    const previous = previousDownloadingRef.current;
-
-    // Check if any downloads completed (were in previous, not in current)
-    for (const modelName of previous) {
-      if (!current.has(modelName)) {
-        // Download completed, refresh models list
-        console.log(`[ModelSettingsModal] Download completed for ${modelName}, refreshing list`);
-        fetchOllamaModels(true);
-        break; // Only refresh once even if multiple completed
-      }
-    }
-
-    // Update ref for next comparison
-    previousDownloadingRef.current = new Set(current);
-  }, [downloadingModels]);
+  // Download tracking removed (Ollama local models deprecated)
 
   // Filter Ollama models based on search query
   const filteredModels = models.filter((model) => {
@@ -1244,56 +1173,15 @@ export function ModelSettingsModal({
                     </div>
                   </div>
                 ) : (
-                  /* Show model download option when Ollama is installed but no models */
+                  /* Show model fetch option when Ollama is installed but no models */
                   <>
                     <Alert className="mb-4">
                       <AlertDescription>
                         {ollamaEndpointChanged
                           ? 'Endpoint changed. Click "Fetch Models" to load models from the new endpoint.'
-                          : 'No models found. Download a recommended model or click "Fetch Models" to load available Ollama models.'}
+                          : 'No models found. Click "Fetch Models" to load available Ollama models.'}
                       </AlertDescription>
                     </Alert>
-                    {!ollamaEndpointChanged && (
-                      <div className="space-y-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={downloadRecommendedModel}
-                          disabled={isDownloading('gemma3:1b')}
-                          className="w-full"
-                        >
-                          {isDownloading('gemma3:1b') ? (
-                            <>
-                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                              Downloading gemma3:1b...
-                            </>
-                          ) : (
-                            <>
-                              <Download className="mr-2 h-4 w-4" />
-                              Download gemma3:1b (Recommended, ~800MB)
-                            </>
-                          )}
-                        </Button>
-
-                        {/* Show progress for gemma3:1b download */}
-                        {isDownloading('gemma3:1b') && getProgress('gemma3:1b') !== undefined && (
-                          <div className="bg-white rounded-md border p-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-blue-600">Downloading gemma3:1b</span>
-                              <span className="text-sm font-semibold text-blue-600">
-                                {Math.round(getProgress('gemma3:1b')!)}%
-                              </span>
-                            </div>
-                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300"
-                                style={{ width: `${getProgress('gemma3:1b')}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -1308,23 +1196,17 @@ export function ModelSettingsModal({
                 ) : (
                   <div className="grid gap-4">
                     {filteredModels.map((model) => {
-                      const progress = getProgress(model.name);
-                      const modelIsDownloading = isDownloading(model.name);
-
                       return (
                         <div
                           key={model.id}
                           className={cn(
-                            'bg-card p-2 m-0 rounded-md border transition-colors',
+                            'bg-card p-2 m-0 rounded-md border transition-colors cursor-pointer',
                             modelConfig.model === model.name
                               ? 'ring-1 ring-blue-500 border-blue-500 background-blue-100'
-                              : 'hover:bg-muted/50',
-                            !modelIsDownloading && 'cursor-pointer'
+                              : 'hover:bg-muted/50'
                           )}
                           onClick={() => {
-                            if (!modelIsDownloading) {
-                              setModelConfig((prev: ModelConfig) => ({ ...prev, model: model.name }))
-                            }
+                            setModelConfig((prev: ModelConfig) => ({ ...prev, model: model.name }))
                           }}
                         >
                           <div>
@@ -1332,22 +1214,6 @@ export function ModelSettingsModal({
                             <span className="text-muted-foreground">with a size of </span>
                             <span className="font-mono font-bold text-sm">{model.size}</span>
                           </div>
-
-                          {/* Progress bar for downloading models */}
-                          {modelIsDownloading && progress !== undefined && (
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-blue-600">Downloading...</span>
-                                <span className="text-sm font-semibold text-blue-600">{Math.round(progress)}%</span>
-                              </div>
-                              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300"
-                                  style={{ width: `${progress}%` }}
-                                />
-                              </div>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -1358,18 +1224,8 @@ export function ModelSettingsModal({
           </div>
         )}
 
-        {/* Built-in AI Models Section */}
-        {modelConfig.provider === 'builtin-ai' && (
-          <div className="mt-6">
-            <BuiltInModelManager
-              selectedModel={modelConfig.model}
-              layout={layout}
-              onModelSelect={(model) =>
-                setModelConfig((prev: ModelConfig) => ({ ...prev, model }))
-              }
-            />
-          </div>
-        )}
+        {/* Built-in AI Models Section - REMOVED */}
+        {/* Built-in AI provider has been removed in favor of REST API backend */}
       </div>
 
       {/* Auto-generate summaries toggle */}

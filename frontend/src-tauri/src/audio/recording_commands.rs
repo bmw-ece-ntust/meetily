@@ -480,35 +480,13 @@ pub async fn stop_recording<R: Runtime>(
             }
         }
 
-        // Get transcription model info (already loaded above for model unload)
-        let transcription_config = match crate::api::api::api_get_transcript_config(
-            app.clone(),
-            app.clone().state(),
-            None,
-        )
-        .await
-        {
-            Ok(Some(config)) => Some((config.provider, config.model)),
-            _ => None,
-        };
+        // Get transcription model info - now handled by REST API backend
+        let transcription_provider = "ai-meeting-agent".to_string();
+        let transcription_model = "whisper".to_string();
 
-        let (transcription_provider, transcription_model) = transcription_config
-            .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
-
-        // Get summary model info from API
-        let summary_config = match crate::api::api::api_get_model_config(
-            app.clone(),
-            app.clone().state(),
-            None,
-        )
-        .await
-        {
-            Ok(Some(config)) => Some((config.provider, config.model)),
-            _ => None,
-        };
-
-        let (summary_provider, summary_model) = summary_config
-            .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
+        // Get summary model info - now handled by REST API backend
+        let summary_provider = "ai-meeting-agent".to_string();
+        let summary_model = "llm".to_string();
 
         // Classify device types (privacy-safe)
         let microphone_device_type = mic_device_name

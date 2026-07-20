@@ -2,7 +2,6 @@
 
 import { Transcript, TranscriptSegmentData } from '@/types';
 import { TranscriptView } from '@/components/TranscriptView';
-import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
 import { useMemo } from 'react';
 
@@ -14,15 +13,6 @@ interface TranscriptPanelProps {
   onOpenMeetingFolder: () => Promise<void>;
   isRecording: boolean;
   disableAutoScroll?: boolean;
-
-  // Optional pagination props (when using virtualization)
-  usePagination?: boolean;
-  segments?: TranscriptSegmentData[];
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
-  totalCount?: number;
-  loadedCount?: number;
-  onLoadMore?: () => void;
 
   // Retranscription props
   meetingId?: string;
@@ -38,38 +28,27 @@ export function TranscriptPanel({
   onOpenMeetingFolder,
   isRecording,
   disableAutoScroll = false,
-  usePagination = false,
-  segments,
-  hasMore,
-  isLoadingMore,
-  totalCount,
-  loadedCount,
-  onLoadMore,
   meetingId,
   meetingFolderPath,
   onRefetchTranscripts,
 }: TranscriptPanelProps) {
-  // Convert transcripts to segments if pagination is not used but we want virtualization
+  // Convert transcripts to segment format for display
   const convertedSegments = useMemo(() => {
-    if (usePagination && segments) {
-      return segments;
-    }
-    // Convert transcripts to segments for virtualization
-    return transcripts.map(t => ({
+    return transcripts.map((t) => ({
       id: t.id,
       timestamp: t.audio_start_time ?? 0,
       endTime: t.audio_end_time,
       text: t.text,
       confidence: t.confidence,
     }));
-  }, [transcripts, usePagination, segments]);
+  }, [transcripts]);
 
   return (
     <div className="hidden md:flex md:w-1/4 lg:w-1/3 min-w-0 border-r border-gray-200 bg-white flex-col relative shrink-0">
       {/* Title area */}
       <div className="p-4 border-b border-gray-200">
         <TranscriptButtonGroup
-          transcriptCount={usePagination ? (totalCount ?? convertedSegments.length) : (transcripts?.length || 0)}
+          transcriptCount={transcripts?.length || 0}
           onCopyTranscript={onCopyTranscript}
           onOpenMeetingFolder={onOpenMeetingFolder}
           meetingId={meetingId}
@@ -78,22 +57,15 @@ export function TranscriptPanel({
         />
       </div>
 
-      {/* Transcript content - use virtualized view for better performance */}
+      {/* Transcript content */}
       <div className="flex-1 overflow-hidden pb-4">
-        <VirtualizedTranscriptView
-          segments={convertedSegments}
+        <TranscriptView
+          transcripts={transcripts}
           isRecording={isRecording}
           isPaused={false}
           isProcessing={false}
           isStopping={false}
           enableStreaming={false}
-          showConfidence={true}
-          disableAutoScroll={disableAutoScroll}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore}
-          totalCount={totalCount}
-          loadedCount={loadedCount}
-          onLoadMore={onLoadMore}
         />
       </div>
 

@@ -2,7 +2,6 @@
 
 import { Transcript } from '@/types';
 import { useEffect, useRef, useState } from 'react';
-import { ConfidenceIndicator } from './ConfidenceIndicator';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { RecordingStatusBar } from './RecordingStatusBar';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -294,11 +293,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                   {transcript.duration !== undefined && (
                     <span className="text-xs text-gray-400">
                       {transcript.duration.toFixed(1)}s
-                      {transcript.confidence !== undefined && (
-                        <ConfidenceIndicator
-                          confidence={transcript.confidence}
-                          showIndicator={showConfidence}
-                        />
+                      {transcript.confidence !== undefined && showConfidence && (
+                        <span className="ml-2">
+                          ({(transcript.confidence * 100).toFixed(0)}%)
+                        </span>
                       )}
                     </span>
                   )}

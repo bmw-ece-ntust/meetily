@@ -2,37 +2,27 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import type { PermissionStatus, OnboardingPermissions } from '@/types/onboarding';
-import { resolveOnboardingSummaryModelStatus } from '@/lib/onboarding-summary-model';
+import { toast } from 'sonner';
 
 interface OnboardingStatus {
   version: string;
   completed: boolean;
   current_step: number;
-  model_status: {
-    summary: string;
-    selected_summary_model?: string;
+  api_config: {
+    configured: boolean;
+    api_url?: string;
   };
   last_updated: string;
 }
 
-interface SummaryModelProgressInfo {
-  percent: number;
-  downloadedMb: number;
-  totalMb: number;
-  speedMbps: number;
-}
-
 interface OnboardingContextType {
   currentStep: number;
-  summaryModelDownloaded: boolean;
-  summaryModelProgress: number;
-  summaryModelProgressInfo: SummaryModelProgressInfo;
-  selectedSummaryModel: string;
-  recommendedSummaryModel: string;
+  apiUrl: string;
+  apiKey: string;
+  isTestingConnection: boolean;
+  connectionTestResult: 'idle' | 'testing' | 'success' | 'error';
   databaseExists: boolean;
-  isBackgroundDownloading: boolean;
   // Permissions
   permissions: OnboardingPermissions;
   permissionsSkipped: boolean;
@@ -41,18 +31,13 @@ interface OnboardingContextType {
   goNext: () => void;
   goPrevious: () => void;
   // Setters
-  setSummaryModelDownloaded: (value: boolean) => void;
-  setSelectedSummaryModel: (value: string) => void;
+  setApiUrl: (url: string) => void;
+  setApiKey: (key: string) => void;
   setDatabaseExists: (value: boolean) => void;
   setPermissionStatus: (permission: keyof OnboardingPermissions, status: PermissionStatus) => void;
   setPermissionsSkipped: (skipped: boolean) => void;
+  testApiConnection: () => Promise<boolean>;
   completeOnboarding: () => Promise<void>;
-  startBackgroundDownloads: (options: StartBackgroundDownloadsOptions) => Promise<void>;
-}
-
-interface StartBackgroundDownloadsOptions {
-  includeSummary: boolean;
-  summaryModel?: string;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -60,18 +45,11 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(undef
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [completed, setCompleted] = useState(false);
-  const [summaryModelDownloaded, setSummaryModelDownloaded] = useState(false);
-  const [summaryModelProgress, setSummaryModelProgress] = useState(0);
-  const [summaryModelProgressInfo, setSummaryModelProgressInfo] = useState<SummaryModelProgressInfo>({
-    percent: 0,
-    downloadedMb: 0,
-    totalMb: 0,
-    speedMbps: 0,
-  });
-  const [selectedSummaryModel, setSelectedSummaryModel] = useState<string>('');
-  const [recommendedSummaryModel, setRecommendedSummaryModel] = useState<string>('');
+  const [apiUrl, setApiUrl] = useState<string>('');
+  const [apiKey, setApiKey] = useState<string>('');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [databaseExists, setDatabaseExists] = useState(false);
-  const [isBackgroundDownloading, setIsBackgroundDownloading] = useState(false);
 
   // Permissions state
   const [permissions, setPermissions] = useState<OnboardingPermissions>({
@@ -82,45 +60,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const [permissionsSkipped, setPermissionsSkipped] = useState(false);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
-
-  const initializeSummaryModelSelection = async (preferredModel = selectedSummaryModel) => {
-    try {
-      const recommendedModel = await invoke<string>('builtin_ai_get_recommended_model');
-      setRecommendedSummaryModel(recommendedModel);
-      const modelToCheck = preferredModel || recommendedModel;
-      setSelectedSummaryModel(modelToCheck);
-
-      const selectedModelReady = await invoke<boolean>('builtin_ai_is_model_ready', {
-        modelName: modelToCheck,
-        refresh: true,
-      });
-      const resolved = resolveOnboardingSummaryModelStatus({
-        selectedModel: preferredModel,
-        recommendedModel,
-        selectedModelReady,
-      });
-
-      setSelectedSummaryModel(resolved.selectedSummaryModel);
-      setSummaryModelDownloaded(resolved.summaryModelDownloaded);
-      console.log('[OnboardingContext] Set recommended model:', resolved.selectedSummaryModel);
-
-      return resolved;
-    } catch (error) {
-      console.error('[OnboardingContext] Failed to initialize summary model:', error);
-      return null;
-    }
-  };
-
-  const requestSummaryModelDownload = (modelName: string) => {
-    console.log('[OnboardingContext] Starting Summary Model download');
-    invoke('builtin_ai_download_model', { modelName })
-      .catch(err => {
-        if (String(err).includes('Download already in progress')) {
-          return;
-        }
-        console.error('[OnboardingContext] Summary Model download failed:', err);
-      });
-  };
+  const isCompletingRef = useRef(false);
 
   // Load status on mount and initialize database
   useEffect(() => {
@@ -129,7 +69,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     initializeDatabaseInBackground();
   }, []);
 
-  // Initialize database silently in background (moved from SetupOverviewStep)
+  // Initialize database silently in background
   const initializeDatabaseInBackground = async () => {
     try {
       console.log('[OnboardingContext] Starting background database initialization');
@@ -189,14 +129,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     setDatabaseExists(true);
   };
 
-  const isCompletingRef = useRef(false);
-
   // Auto-save on state change (debounced)
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    // Don't auto-save if completed (to avoid overwriting completion status)
-    // Also don't auto-save if we are currently in the process of completing
+    // Don't auto-save if completed or currently completing
     if (completed || isCompletingRef.current) return;
 
     saveTimeoutRef.current = setTimeout(() => {
@@ -206,40 +143,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [currentStep, summaryModelDownloaded, completed]);
-
-  // Listen to summary model (Built-in AI) download progress
-  useEffect(() => {
-    const unlisten = listen<{
-      model: string;
-      progress: number;
-      downloaded_mb?: number;
-      total_mb?: number;
-      speed_mbps?: number;
-      status: string;
-    }>(
-      'builtin-ai-download-progress',
-      (event) => {
-        const { model, progress, downloaded_mb, total_mb, speed_mbps, status } = event.payload;
-        if (selectedSummaryModel && model === selectedSummaryModel) {
-          setSummaryModelProgress(progress);
-          setSummaryModelProgressInfo({
-            percent: progress,
-            downloadedMb: downloaded_mb ?? 0,
-            totalMb: total_mb ?? 0,
-            speedMbps: speed_mbps ?? 0,
-          });
-          if (status === 'completed' || progress >= 100) {
-            setSummaryModelDownloaded(true);
-          }
-        }
-      }
-    );
-
-    return () => {
-      unlisten.then(fn => fn());
-    };
-  }, [selectedSummaryModel]);
+  }, [currentStep, completed]);
 
   const checkDatabaseStatus = async () => {
     try {
@@ -261,189 +165,109 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         if (status.completed) {
           setCurrentStep(status.current_step);
           setCompleted(true);
-          setSummaryModelDownloaded(status.model_status.summary === 'downloaded');
-          if (status.model_status.selected_summary_model) {
-            setSelectedSummaryModel(status.model_status.selected_summary_model);
-          }
-          console.log('[OnboardingContext] Restored completed onboarding status without model verification');
+          console.log('[OnboardingContext] Restored completed onboarding status');
           return;
         }
 
-        // Don't trust saved status - verify actual model status on disk
-        const verifiedStatus = await verifyModelStatus(status);
+        // Restore in-progress state
+        setCurrentStep(status.current_step);
+        setCompleted(status.completed);
 
-        setCurrentStep(verifiedStatus.currentStep);
-        setCompleted(verifiedStatus.completed);
-        setSummaryModelDownloaded(verifiedStatus.summaryModelDownloaded);
-        if (verifiedStatus.selectedSummaryModel) {
-          setSelectedSummaryModel(verifiedStatus.selectedSummaryModel);
-        }
-
-        console.log('[OnboardingContext] Verified status:', verifiedStatus);
-
-        // Check if any downloads are active to restore isBackgroundDownloading state
-        await checkActiveDownloads();
+        console.log('[OnboardingContext] Restored status:', status);
       } else {
-        await initializeSummaryModelSelection();
+        console.log('[OnboardingContext] No saved status, starting fresh');
       }
     } catch (error) {
       console.error('[OnboardingContext] Failed to load onboarding status:', error);
     }
   };
 
-  // Verify that models actually exist on disk, not just trust saved JSON
-  const verifyModelStatus = async (savedStatus: OnboardingStatus) => {
-    let summaryModelDownloaded = false;
-    let selectedSummaryModel = '';
-
-    // Verify the selected/recommended Summary model exists on disk.
-    try {
-      const recommendedModel = await invoke<string>('builtin_ai_get_recommended_model');
-      setRecommendedSummaryModel(recommendedModel);
-      const savedSelectedModel = savedStatus.model_status.selected_summary_model || '';
-      const modelToCheck = savedSelectedModel || recommendedModel;
-      const selectedModelReady = await invoke<boolean>('builtin_ai_is_model_ready', {
-        modelName: modelToCheck,
-        refresh: true,
-      });
-      const resolved = resolveOnboardingSummaryModelStatus({
-        selectedModel: savedSelectedModel,
-        recommendedModel,
-        selectedModelReady,
-      });
-      selectedSummaryModel = resolved.selectedSummaryModel;
-      summaryModelDownloaded = resolved.summaryModelDownloaded;
-      console.log('[OnboardingContext] Summary model verified on disk:', summaryModelDownloaded, 'model:', selectedSummaryModel);
-    } catch (error) {
-      console.warn('[OnboardingContext] Failed to verify Summary model:', error);
-      summaryModelDownloaded = false;
-    }
-
-    // Determine the correct step based on verified status
-    // New simplified flow: Step 1: Welcome, Step 2: Setup Overview, Step 3: Download Progress, Step 4: Permissions (macOS)
-    let currentStep = savedStatus.current_step;
-    let completed = savedStatus.completed;
-
-    // Clamp step to new max (4)
-    if (currentStep > 4) {
-      currentStep = 3; // Go to download progress step
-    }
-
-    // Trust the completed status - don't revert based on model downloads
-    // Downloads continue in background; user stays in main app regardless
-    return {
-      currentStep,
-      completed,
-      summaryModelDownloaded,
-      selectedSummaryModel,
-    };
-  };
-
   const saveOnboardingStatus = async () => {
-    // Safety check: if we are in the process of completing, DO NOT save
-    // This prevents a race condition where a download completion event triggers a save
-    // that overwrites the "completed" status set by completeOnboarding
     if (isCompletingRef.current) {
-      console.log('[OnboardingContext] Skipping saveOnboardingStatus because completion is in progress');
+      console.log('[OnboardingContext] Skipping save during completion');
       return;
     }
 
     try {
       await invoke('save_onboarding_status_cmd', {
         status: {
-          version: '1.0',
+          version: '2.0',
           completed: completed,
           current_step: currentStep,
-          model_status: {
-            summary: summaryModelDownloaded ? 'downloaded' : 'not_downloaded',
-            selected_summary_model: selectedSummaryModel || undefined,
+          api_config: {
+            configured: !!apiUrl,
+            api_url: apiUrl || undefined,
           },
           last_updated: new Date().toISOString(),
         },
       });
     } catch (error) {
-      console.error('[OnboardingContext] Failed to save onboarding status:', error);
+      console.error('[OnboardingContext] Failed to save status:', error);
+    }
+  };
+
+  const testApiConnection = async (): Promise<boolean> => {
+    if (!apiUrl) {
+      toast.error('Please enter an API URL');
+      return false;
+    }
+
+    setIsTestingConnection(true);
+    setConnectionTestResult('testing');
+
+    try {
+      const result = await invoke<boolean>('test_api_connection', { apiUrl });
+
+      if (result) {
+        setConnectionTestResult('success');
+        toast.success('API connection successful!');
+        return true;
+      } else {
+        setConnectionTestResult('error');
+        toast.error('API connection failed');
+        return false;
+      }
+    } catch (error) {
+      console.error('[OnboardingContext] API connection test failed:', error);
+      setConnectionTestResult('error');
+      toast.error('Failed to connect to API', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      setIsTestingConnection(false);
     }
   };
 
   const completeOnboarding = async () => {
     try {
-      // Set completion flag to prevent race conditions with auto-save
       isCompletingRef.current = true;
 
-      // Clear any pending auto-saves
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = undefined;
       }
 
-      let modelToSave = selectedSummaryModel;
-      if (!modelToSave) {
-        modelToSave = await invoke<string>('builtin_ai_get_recommended_model');
-        setSelectedSummaryModel(modelToSave);
+      // Validate API URL is not empty
+      if (!apiUrl) {
+        throw new Error('API URL is required');
       }
 
-      const selectedModelReady = await invoke<boolean>('builtin_ai_is_model_ready', {
-        modelName: modelToSave,
-        refresh: true,
-      });
-      setSummaryModelDownloaded(selectedModelReady);
-      if (!selectedModelReady) {
-        requestSummaryModelDownload(modelToSave);
-      }
-
-      // Onboarding always uses builtin-ai with selected model
+      // Call backend to save config and mark complete
       await invoke('complete_onboarding', {
-        model: modelToSave,
+        apiUrl: apiUrl,
+        apiKey: apiKey || null,
       });
-      setCompleted(true);
-      console.log('[OnboardingContext] Onboarding completed with model:', modelToSave);
 
-      // Reset the flag so subsequent state updates can be saved
+      setCompleted(true);
+      console.log('[OnboardingContext] Onboarding completed with API:', apiUrl);
+
       isCompletingRef.current = false;
     } catch (error) {
       console.error('[OnboardingContext] Failed to complete onboarding:', error);
-      isCompletingRef.current = false; // Reset flag on error
-      throw error; // Re-throw so PermissionsStep can handle it
-    }
-  };
-
-  // Start background downloads for models.
-  const startBackgroundDownloads = async ({
-    includeSummary,
-    summaryModel,
-  }: StartBackgroundDownloadsOptions) => {
-    console.log('[OnboardingContext] Starting background downloads:', {
-      includeSummary,
-      summaryModel,
-    });
-
-    try {
-      const shouldStartSummary = includeSummary && !summaryModelDownloaded && !!summaryModel;
-
-      if (!shouldStartSummary) {
-        if (includeSummary && !summaryModelDownloaded && !summaryModel) {
-          console.warn('[OnboardingContext] Summary Model download skipped until recommendation is loaded');
-        }
-        return;
-      }
-
-      setIsBackgroundDownloading(true);
-
-      // Start selected Summary Model download immediately so completion cannot race the request.
-      if (shouldStartSummary && summaryModel) {
-        requestSummaryModelDownload(summaryModel);
-      }
-    } catch (error) {
-      console.error('[OnboardingContext] Failed to start background downloads:', error);
-      setIsBackgroundDownloading(false);
+      isCompletingRef.current = false;
       throw error;
     }
-  };
-
-  // Check if any models are currently downloading (for re-entry)
-  const checkActiveDownloads = async () => {
-    setIsBackgroundDownloading(false);
   };
 
   const setPermissionStatus = useCallback((permission: keyof OnboardingPermissions, status: PermissionStatus) => {
@@ -454,22 +278,20 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const goToStep = useCallback((step: number) => {
-    setCurrentStep(Math.max(1, Math.min(step, 4)));
+    setCurrentStep(Math.max(1, Math.min(step, 3))); // Max step 3
   }, []);
 
   const goNext = useCallback(() => {
     setCurrentStep((prev: number) => {
       const next = prev + 1;
-      // Don't go past step 4
-      return Math.min(next, 4);
+      return Math.min(next, 3); // Don't go past step 3
     });
   }, []);
 
   const goPrevious = useCallback(() => {
     setCurrentStep((prev: number) => {
       const previous = prev - 1;
-      // Don't go below step 1
-      return Math.max(previous, 1);
+      return Math.max(previous, 1); // Don't go below step 1
     });
   }, []);
 
@@ -477,25 +299,23 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     <OnboardingContext.Provider
       value={{
         currentStep,
-        summaryModelDownloaded,
-        summaryModelProgress,
-        summaryModelProgressInfo,
-        selectedSummaryModel,
-        recommendedSummaryModel,
+        apiUrl,
+        apiKey,
+        isTestingConnection,
+        connectionTestResult,
         databaseExists,
-        isBackgroundDownloading,
         permissions,
         permissionsSkipped,
         goToStep,
         goNext,
         goPrevious,
-        setSummaryModelDownloaded,
-        setSelectedSummaryModel,
+        setApiUrl,
+        setApiKey,
         setDatabaseExists,
         setPermissionStatus,
         setPermissionsSkipped,
+        testApiConnection,
         completeOnboarding,
-        startBackgroundDownloads,
       }}
     >
       {children}

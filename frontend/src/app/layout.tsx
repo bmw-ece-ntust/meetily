@@ -13,15 +13,12 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RecordingStateProvider } from '@/contexts/RecordingStateContext'
-import { OllamaDownloadProvider } from '@/contexts/OllamaDownloadContext'
-import { TranscriptProvider } from '@/contexts/TranscriptContext'
 import { ConfigProvider, useConfig } from '@/contexts/ConfigContext'
 import { OnboardingProvider } from '@/contexts/OnboardingContext'
 import { OnboardingFlow } from '@/components/onboarding'
 import { loadBetaFeatures } from '@/types/betaFeatures'
 import { DownloadProgressToastProvider } from '@/components/shared/DownloadProgressToast'
 import { UpdateCheckProvider } from '@/components/UpdateCheckProvider'
-import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcessingProvider'
 import { ImportAudioDialog, ImportDropOverlay } from '@/components/ImportAudio'
 import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
@@ -81,14 +78,15 @@ export default function RootLayout({
     invoke<{ completed: boolean } | null>('get_onboarding_status')
       .then((status) => {
         const isComplete = status?.completed ?? false
-        setOnboardingCompleted(isComplete)
-
+        
         if (!isComplete) {
           console.log('[Layout] Onboarding not completed, showing onboarding flow')
           setShowOnboarding(true)
         } else {
           console.log('[Layout] Onboarding completed, showing main app')
         }
+        
+        setOnboardingCompleted(isComplete)
       })
       .catch((error) => {
         console.error('[Layout] Failed to check onboarding status:', error)
@@ -235,44 +233,37 @@ export default function RootLayout({
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
         <AnalyticsProvider>
           <RecordingStateProvider>
-            <TranscriptProvider>
-              <ConfigProvider>
-                <OllamaDownloadProvider>
-                  <OnboardingProvider>
-                    <UpdateCheckProvider>
-                      <SidebarProvider>
-                        <TooltipProvider>
-                          <RecordingPostProcessingProvider>
-                            <ImportDialogProvider onOpen={handleOpenImportDialog}>
-                              {/* Download progress toast provider - listens for background downloads */}
-                              <DownloadProgressToastProvider />
+            <ConfigProvider>
+              <OnboardingProvider>
+                <UpdateCheckProvider>
+                  <SidebarProvider>
+                    <TooltipProvider>
+                      <ImportDialogProvider onOpen={handleOpenImportDialog}>
+                        {/* Download progress toast provider - listens for background downloads */}
+                        <DownloadProgressToastProvider />
 
-                              {/* Show onboarding or main app */}
-                              {showOnboarding ? (
-                                <OnboardingFlow onComplete={handleOnboardingComplete} />
-                              ) : (
-                                <div className="flex">
-                                  <Sidebar />
-                                  <MainContent>{children}</MainContent>
-                                </div>
-                              )}
-                              {/* Import audio overlay and dialog */}
-                              <ImportDropOverlay visible={showDropOverlay} />
-                              <ConditionalImportDialog
-                                showImportDialog={showImportDialog}
-                                handleImportDialogClose={handleImportDialogClose}
-                                importFilePath={importFilePath}
-                              />
-                            </ImportDialogProvider>
-                          </RecordingPostProcessingProvider>
-                        </TooltipProvider>
-                      </SidebarProvider>
-                    </UpdateCheckProvider>
-                  </OnboardingProvider>
-
-                </OllamaDownloadProvider>
-              </ConfigProvider>
-            </TranscriptProvider>
+                        {/* Show onboarding or main app */}
+                        {showOnboarding ? (
+                          <OnboardingFlow onComplete={handleOnboardingComplete} />
+                        ) : (
+                          <div className="flex">
+                            <Sidebar />
+                            <MainContent>{children}</MainContent>
+                          </div>
+                        )}
+                        {/* Import audio overlay and dialog */}
+                        <ImportDropOverlay visible={showDropOverlay} />
+                        <ConditionalImportDialog
+                          showImportDialog={showImportDialog}
+                          handleImportDialogClose={handleImportDialogClose}
+                          importFilePath={importFilePath}
+                        />
+                      </ImportDialogProvider>
+                    </TooltipProvider>
+                  </SidebarProvider>
+                </UpdateCheckProvider>
+              </OnboardingProvider>
+            </ConfigProvider>
           </RecordingStateProvider>
         </AnalyticsProvider>
 

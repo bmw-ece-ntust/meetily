@@ -13,26 +13,26 @@ pub struct OnboardingStatus {
     pub version: String,
     pub completed: bool,
     pub current_step: u8,
-    pub model_status: ModelStatus,
+    pub api_config: ApiConfig,
     pub last_updated: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct ModelStatus {
-    pub summary: String,   // Generic field for summary model (Qwen 3.5 or legacy Gemma variants)
+pub struct ApiConfig {
+    pub configured: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub selected_summary_model: Option<String>,
+    pub api_url: Option<String>,
 }
 
 impl Default for OnboardingStatus {
     fn default() -> Self {
         Self {
-            version: "1.0".to_string(),
+            version: "2.0".to_string(),
             completed: false,
             current_step: 1,
-            model_status: ModelStatus {
-                summary: "not_downloaded".to_string(),
-                selected_summary_model: None,
+            api_config: ApiConfig {
+                configured: false,
+                api_url: None,
             },
             last_updated: chrono::Utc::now().to_rfc3339(),
         }
@@ -169,27 +169,25 @@ pub async fn reset_onboarding_status_cmd<R: Runtime>(
 pub async fn complete_onboarding<R: Runtime>(
     app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
-    model: String,
+    api_url: String,
+    api_key: Option<String>,
 ) -> Result<(), String> {
-    info!("Completing onboarding with builtin-ai model: {}", model);
+    info!("Completing onboarding with API URL: {}", api_url);
 
-    // Step 1: Save model configuration to SQLite database FIRST
+    // Step 1: Save API configuration to SQLite database
     let pool = state.db_manager.pool();
 
-    // Onboarding always uses builtin-ai (local LLM)
-    if let Err(e) = SettingsRepository::save_model_config(
+    if let Err(e) = SettingsRepository::save_api_config(
         pool,
-        "builtin-ai",
-        &model,
-        "large-v3",
-        None,
+        &api_url,
+        api_key.as_deref(),
     ).await {
-        error!("Failed to save builtin-ai model config: {}", e);
-        return Err(format!("Failed to save builtin-ai model config: {}", e));
+        error!("Failed to save API config: {}", e);
+        return Err(format!("Failed to save API config: {}", e));
     }
-    info!("Saved builtin-ai model config: model={}", model);
+    info!("Saved API configuration: url={}", api_url);
 
-    // Save transcription model config for ai-meeting-agent.
+    // Save transcription model config for ai-meeting-agent
     if let Err(e) = SettingsRepository::save_transcript_config(
         pool,
         crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
@@ -204,21 +202,23 @@ pub async fn complete_onboarding<R: Runtime>(
         crate::config::DEFAULT_TRANSCRIPTION_MODEL
     );
 
-    // Step 2: Only NOW mark onboarding as complete (after DB operations succeed)
+    // Step 2: Mark onboarding as complete
     let mut status = load_onboarding_status(&app)
         .await
         .map_err(|e| format!("Failed to load onboarding status: {}", e))?;
 
     status.completed = true;
-    status.current_step = 4; // Max step (4 on macOS with permissions, 3 on other platforms)
-    status.model_status.summary = "downloaded".to_string();
-    status.model_status.selected_summary_model = Some(model.clone());
+    status.current_step = 3; // Max step (3 for macOS, 2 for others)
+    status.api_config = ApiConfig {
+        configured: true,
+        api_url: Some(api_url.clone()),
+    };
 
     save_onboarding_status(&app, &status)
         .await
         .map_err(|e| format!("Failed to save completed onboarding status: {}", e))?;
 
-    info!("Onboarding completed successfully with model: {}", model);
+    info!("Onboarding completed successfully with API: {}", api_url);
     Ok(())
 }
 
@@ -227,21 +227,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn onboarding_status_deserializes_without_selected_summary_model() {
+    fn onboarding_status_v2_deserializes_correctly() {
         let status: OnboardingStatus = serde_json::from_str(
             r#"{
-                "version": "1.0",
+                "version": "2.0",
                 "completed": true,
-                "current_step": 4,
-                "model_status": {
-                    "parakeet": "downloaded",  // DEPRECATED: transcription now API-backed
-                    "summary": "downloaded"
+                "current_step": 3,
+                "api_config": {
+                    "configured": true,
+                    "api_url": "http://127.0.0.1:8080"
                 },
-                "last_updated": "2026-05-30T00:00:00Z"
+                "last_updated": "2026-07-20T00:00:00Z"
             }"#,
         )
-        .expect("old onboarding status should remain compatible");
+        .expect("v2 onboarding status should deserialize");
 
-        assert_eq!(status.model_status.selected_summary_model, None);
+        assert_eq!(status.version, "2.0");
+        assert!(status.api_config.configured);
+        assert_eq!(status.api_config.api_url, Some("http://127.0.0.1:8080".to_string()));
+    }
+
+    #[test]
+    fn onboarding_status_v2_without_api_url() {
+        let status: OnboardingStatus = serde_json::from_str(
+            r#"{
+                "version": "2.0",
+                "completed": false,
+                "current_step": 1,
+                "api_config": {
+                    "configured": false
+                },
+                "last_updated": "2026-07-20T00:00:00Z"
+            }"#,
+        )
+        .expect("v2 onboarding status without api_url should deserialize");
+
+        assert!(!status.api_config.configured);
+        assert_eq!(status.api_config.api_url, None);
     }
 }

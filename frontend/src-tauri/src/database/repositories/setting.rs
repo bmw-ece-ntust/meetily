@@ -348,4 +348,41 @@ impl SettingsRepository {
 
         Ok(())
     }
+
+    /// Save API configuration (URL and optional API key) for ai-meeting-agent
+    pub async fn save_api_config(
+        pool: &SqlitePool,
+        api_url: &str,
+        api_key: Option<&str>,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO api_config (id, base_url, api_key, updated_at)
+            VALUES (1, $1, $2, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                base_url = excluded.base_url,
+                api_key = excluded.api_key,
+                updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(api_url)
+        .bind(api_key)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get API configuration (URL and optional API key) for ai-meeting-agent
+    pub async fn get_api_config(
+        pool: &SqlitePool,
+    ) -> std::result::Result<(Option<String>, Option<String>), sqlx::Error> {
+        let result: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT base_url, api_key FROM api_config WHERE id = 1 LIMIT 1"
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(result.unwrap_or((None, None)))
+    }
 }

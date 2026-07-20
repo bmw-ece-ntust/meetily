@@ -13,7 +13,6 @@ import { ModelConfig } from '@/components/ModelSettingsModal';
 // Custom hooks
 import { useMeetingData } from '@/hooks/meeting-details/useMeetingData';
 import { useSummaryGeneration } from '@/hooks/meeting-details/useSummaryGeneration';
-import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -25,13 +24,6 @@ export default function PageContent({
   onAutoGenerateComplete,
   onMeetingUpdated,
   onRefetchTranscripts,
-  // Pagination props for efficient transcript loading
-  segments,
-  hasMore,
-  isLoadingMore,
-  totalCount,
-  loadedCount,
-  onLoadMore,
 }: {
   meeting: any;
   summaryData: Summary | null;
@@ -39,13 +31,6 @@ export default function PageContent({
   onAutoGenerateComplete?: () => void;
   onMeetingUpdated?: () => Promise<void>;
   onRefetchTranscripts?: () => Promise<void>;
-  // Pagination props
-  segments?: any[];
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
-  totalCount?: number;
-  loadedCount?: number;
-  onLoadMore?: () => void;
 }) {
   console.log('📄 PAGE CONTENT: Initializing with data:', {
     meetingId: meeting.id,
@@ -57,6 +42,15 @@ export default function PageContent({
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [isRecording] = useState(false);
   const [summaryResponse] = useState<SummaryResponse | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('full');
+
+  // Available summary templates
+  const availableTemplates = [
+    { id: 'key_points', name: 'Key Points', description: 'Extract main points from the meeting' },
+    { id: 'action_items', name: 'Action Items', description: 'List action items and tasks' },
+    { id: 'decisions', name: 'Decisions', description: 'Summarize decisions made' },
+    { id: 'full', name: 'Full Summary', description: 'Complete meeting summary' },
+  ];
 
   // Ref to store the modal open function from SummaryGeneratorButtonGroup
   const openModelSettingsRef = useRef<(() => void) | null>(null);
@@ -69,7 +63,6 @@ export default function PageContent({
 
   // Custom hooks
   const meetingData = useMeetingData({ meeting, summaryData, onMeetingUpdated });
-  const templates = useTemplates();
 
   // Callback to register the modal open function
   const handleRegisterModalOpen = (openFn: () => void) => {
@@ -115,7 +108,7 @@ export default function PageContent({
     transcripts: meetingData.transcripts,
     modelConfig: modelConfig,
     isModelConfigLoading: false, // ConfigContext loads on mount
-    selectedTemplate: templates.selectedTemplate,
+    selectedTemplate: selectedTemplate,
     onMeetingUpdated,
     updateMeetingTitle: meetingData.updateMeetingTitle,
     setAiSummary: meetingData.setAiSummary,
@@ -133,6 +126,24 @@ export default function PageContent({
   const meetingOperations = useMeetingOperations({
     meeting,
   });
+
+  // Handle template selection
+  const handleTemplateSelect = (templateId: string, templateName: string) => {
+    console.log(`📋 Template selected: ${templateName} (${templateId})`);
+    setSelectedTemplate(templateId);
+  };
+
+  // Handle summary change (for BlockNote editor)
+  const handleSummaryChange = (summary: Summary) => {
+    console.log('📝 Summary changed in editor:', summary);
+    meetingData.setAiSummary(summary);
+  };
+
+  // Handle dirty state change (for BlockNote editor)
+  const handleDirtyChange = (isDirty: boolean) => {
+    console.log('💾 Summary dirty state changed:', isDirty);
+    // Could track unsaved changes here if needed
+  };
 
   // Track page view
   useEffect(() => {
@@ -179,14 +190,6 @@ export default function PageContent({
           onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
           isRecording={isRecording}
           disableAutoScroll={true}
-          // Pagination props for efficient loading
-          usePagination={true}
-          segments={segments}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore}
-          totalCount={totalCount}
-          loadedCount={loadedCount}
-          onLoadMore={onLoadMore}
           // Retranscription props
           meetingId={meeting.id}
           meetingFolderPath={meeting.folder_path}
@@ -216,16 +219,15 @@ export default function PageContent({
           customPrompt={customPrompt}
           summaryResponse={summaryResponse}
           onSaveSummary={meetingData.handleSaveSummary}
-          onSummaryChange={meetingData.handleSummaryChange}
-          onDirtyChange={meetingData.setIsSummaryDirty}
-          summaryError={summaryGeneration.summaryError}
           onRegenerateSummary={summaryGeneration.handleRegenerateSummary}
+          onOpenModelSettings={handleOpenModelSettings}
+          availableTemplates={availableTemplates}
+          selectedTemplate={selectedTemplate}
+          onTemplateSelect={handleTemplateSelect}
+          onSummaryChange={handleSummaryChange}
+          onDirtyChange={handleDirtyChange}
+          summaryError={summaryGeneration.summaryError}
           getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
-          availableTemplates={templates.availableTemplates}
-          selectedTemplate={templates.selectedTemplate}
-          onTemplateSelect={templates.handleTemplateSelection}
-          isModelConfigLoading={false}
-          onOpenModelSettings={handleRegisterModalOpen}
         />
       </div>
     </motion.div>

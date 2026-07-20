@@ -37,9 +37,6 @@ pub mod playback_monitor; // NEW: Playback device detection for BT warnings
 // Shared constants
 pub mod constants;
 
-// Retranscription module (re-process stored audio with different settings)
-pub mod retranscription;
-
 // Import module (import external audio files as new meetings)
 pub mod import;
 

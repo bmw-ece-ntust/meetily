@@ -6,7 +6,11 @@ import { OnboardingContainer } from '../OnboardingContainer';
 import { PermissionRow } from '../shared';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 
-export function PermissionsStep() {
+interface PermissionsStepProps {
+  onComplete?: () => void;
+}
+
+export function PermissionsStep({ onComplete }: PermissionsStepProps) {
   const { setPermissionStatus, setPermissionsSkipped, permissions, completeOnboarding } = useOnboarding();
   const [isPending, setIsPending] = useState(false);
 
@@ -96,6 +100,7 @@ export function PermissionsStep() {
   const handleFinish = async () => {
     try {
       await completeOnboarding();
+      onComplete?.(); // Call parent callback
       window.location.reload();
     } catch (error) {
       console.error('Failed to complete onboarding:', error);
@@ -115,7 +120,7 @@ export function PermissionsStep() {
     <OnboardingContainer
       title="Grant Permissions"
       description="Meetily needs access to your microphone and system audio to record meetings"
-      step={4}
+      step={3}
       hideProgress={true}
       showNavigation={allPermissionsGranted}
       canGoNext={allPermissionsGranted}

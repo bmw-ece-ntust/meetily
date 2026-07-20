@@ -36,7 +36,6 @@ pub(crate) use perf_trace;
 
 // Declare audio module
 pub mod analytics;
-pub mod api;
 pub mod api_client;
 pub mod audio;
 pub mod config;
@@ -407,7 +406,6 @@ pub fn run() {
             None::<notifications::manager::NotificationManager<tauri::Wry>>,
         )) as NotificationManagerState<tauri::Wry>)
         .manage(audio::init_system_audio_state())
-        .manage(summary::summary_engine::ModelManagerState(Arc::new(tokio::sync::Mutex::new(None))))
         .setup(|_app| {
             log::info!("Application setup complete");
 
@@ -442,43 +440,11 @@ pub fn run() {
                 }
             });
 
-            // Initialize ModelManager for summary engine (async, non-blocking)
-            let app_handle_for_model_manager = _app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                match summary::summary_engine::commands::init_model_manager_at_startup(&app_handle_for_model_manager).await {
-                    Ok(_) => log::info!("ModelManager initialized successfully at startup"),
-                    Err(e) => {
-                        log::warn!("Failed to initialize ModelManager at startup: {}", e);
-                        log::warn!("ModelManager will be lazy-initialized on first use");
-                    }
-                }
-            });
-
-            // Trigger system audio permission request on startup (similar to microphone permission)
-            // #[cfg(target_os = "macos")]
-            // {
-            //     tauri::async_runtime::spawn(async {
-            //         if let Err(e) = audio::permissions::trigger_system_audio_permission() {
-            //             log::warn!("Failed to trigger system audio permission: {}", e);
-            //         }
-            //     });
-            // }
-
             // Initialize database (handles first launch detection and conditional setup)
             tauri::async_runtime::block_on(async {
                 database::setup::initialize_database_on_startup(&_app.handle()).await
             })
             .expect("Failed to initialize database");
-
-            // Initialize bundled templates directory for dynamic template discovery
-            log::info!("Initializing bundled templates directory...");
-            if let Ok(resource_path) = _app.handle().path().resource_dir() {
-                let templates_dir = resource_path.join("templates");
-                log::info!("Setting bundled templates directory to: {:?}", templates_dir);
-                summary::templates::set_bundled_templates_dir(templates_dir);
-            } else {
-                log::warn!("Failed to resolve resource directory for templates");
-            }
 
             Ok(())
         })
@@ -555,56 +521,6 @@ pub fn run() {
             console_utils::show_console,
             console_utils::hide_console,
             console_utils::toggle_console,
-            api::api_get_meetings,
-            api::api_search_transcripts,
-            api::api_get_profile,
-            api::api_save_profile,
-            api::api_update_profile,
-            api::api_get_model_config,
-            api::api_save_model_config,
-            api::api_get_api_key,
-            // api::api_get_auto_generate_setting,
-            // api::api_save_auto_generate_setting,
-            api::api_get_transcript_config,
-            api::api_save_transcript_config,
-            api::api_get_transcript_api_key,
-            api::api_delete_meeting,
-            api::api_get_meeting,
-            api::api_get_meeting_metadata,
-            api::api_get_meeting_transcripts,
-            api::api_save_meeting_title,
-            api::api_save_transcript,
-            api::open_meeting_folder,
-            api::test_backend_connection,
-            api::debug_backend_connection,
-            api::open_external_url,
-            // Custom OpenAI commands
-            api::api_save_custom_openai_config,
-            api::api_get_custom_openai_config,
-            api::api_test_custom_openai_connection,
-            // Summary commands
-            summary::commands::api_process_transcript,
-            summary::commands::api_get_summary,
-            summary::commands::api_save_meeting_summary,
-            summary::commands::api_get_meeting_summary_language,
-            summary::commands::api_save_meeting_summary_language,
-            summary::commands::api_get_meeting_detected_summary_language,
-            summary::commands::api_save_meeting_detected_summary_language,
-            summary::commands::api_detect_transcript_summary_language,
-            summary::commands::api_cancel_summary,
-            // Template commands
-            summary::template_commands::api_list_templates,
-            summary::template_commands::api_get_template_details,
-            summary::template_commands::api_validate_template,
-            // Built-in AI commands
-            summary::summary_engine::commands::builtin_ai_list_models,
-            summary::summary_engine::commands::builtin_ai_get_model_info,
-            summary::summary_engine::commands::builtin_ai_download_model,
-            summary::summary_engine::commands::builtin_ai_cancel_download,
-            summary::summary_engine::commands::builtin_ai_delete_model,
-            summary::summary_engine::commands::builtin_ai_is_model_ready,
-            summary::summary_engine::commands::builtin_ai_get_available_summary_model,
-            summary::summary_engine::commands::builtin_ai_get_recommended_model,
             audio::recording_preferences::get_recording_preferences,
             audio::recording_preferences::set_recording_preferences,
             audio::recording_preferences::get_default_recordings_folder_path,
@@ -642,14 +558,6 @@ pub fn run() {
             audio::permissions::check_screen_recording_permission_command,
             audio::permissions::request_screen_recording_permission_command,
             audio::permissions::trigger_system_audio_permission_command,
-            // Database import commands
-            database::commands::check_first_launch,
-            database::commands::select_legacy_database_path,
-            database::commands::detect_legacy_database,
-            database::commands::check_default_legacy_database,
-            database::commands::check_homebrew_database,
-            database::commands::import_and_initialize_database,
-            database::commands::initialize_fresh_database,
             // Database and Models path commands
             database::commands::get_database_directory,
             database::commands::open_database_folder,
@@ -661,10 +569,6 @@ pub fn run() {
             // System settings commands
             #[cfg(target_os = "macos")]
             utils::open_system_settings,
-            // Retranscription commands
-            audio::retranscription::start_retranscription_command,
-            audio::retranscription::cancel_retranscription_command,
-            audio::retranscription::is_retranscription_in_progress_command,
             // Import audio commands
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
@@ -711,15 +615,9 @@ pub fn run() {
                             } else {
                                 log::info!("Database cleanup completed successfully");
                             }
-                        } else {
-                            log::warn!("AppState not available for database cleanup (likely first launch)");
-                        }
-
-                        // Clean up sidecar
-                        log::info!("Cleaning up sidecar...");
-                        if let Err(e) = summary::summary_engine::force_shutdown_sidecar().await {
-                            log::error!("Failed to force shutdown sidecar: {}", e);
-                        }
+                         } else {
+                             log::warn!("AppState not available for database cleanup (likely first launch)");
+                         }
                     });
                     log::info!("Application cleanup complete");
                 }

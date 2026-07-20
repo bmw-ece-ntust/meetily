@@ -13,8 +13,28 @@ pub async fn initialize_database_on_startup(app: &AppHandle) -> Result<(), Strin
         .await
         .map_err(|e| format!("Failed to check first launch status: {}", e))?;
 
+    // Always initialize database and API client, even on first launch
+    // This ensures all Tauri commands work during onboarding (e.g., test_api_connection)
+    let db_manager = DatabaseManager::new_from_app_handle(app)
+        .await
+        .map_err(|e| format!("Failed to initialize database manager: {}", e))?;
+
+    // Initialize API client components with default config from database
+    let (api_client, memory_cache, upload_queue, upload_worker) =
+        initialize_api_client(db_manager.pool())
+            .await
+            .map_err(|e| format!("Failed to initialize API client: {}", e))?;
+
+    app.manage(AppState {
+        db_manager,
+        api_client,
+        memory_cache,
+        upload_queue,
+        upload_worker,
+    });
+
     if is_first_launch {
-        info!("First launch detected - will notify window when ready");
+        info!("First launch detected - database initialized with defaults, emitting event");
 
         // Delay event emission to ensure window is ready and React listeners are registered
         let app_handle = app.clone();
@@ -26,24 +46,6 @@ pub async fn initialize_database_on_startup(app: &AppHandle) -> Result<(), Strin
             info!("Emitted first-launch-detected after delay");
         });
     } else {
-        // Normal flow - initialize database immediately
-        let db_manager = DatabaseManager::new_from_app_handle(app)
-            .await
-            .map_err(|e| format!("Failed to initialize database manager: {}", e))?;
-
-        // Initialize API client components
-        let (api_client, memory_cache, upload_queue, upload_worker) =
-            initialize_api_client(db_manager.pool())
-                .await
-                .map_err(|e| format!("Failed to initialize API client: {}", e))?;
-
-        app.manage(AppState {
-            db_manager,
-            api_client,
-            memory_cache,
-            upload_queue,
-            upload_worker,
-        });
         info!("Database and API client initialized successfully");
     }
 
