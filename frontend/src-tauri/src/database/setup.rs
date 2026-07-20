@@ -2,6 +2,7 @@ use log::info;
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::manager::DatabaseManager;
+use crate::api_client::setup::initialize_api_client;
 use crate::state::AppState;
 
 /// Initialize database on app startup
@@ -30,8 +31,20 @@ pub async fn initialize_database_on_startup(app: &AppHandle) -> Result<(), Strin
             .await
             .map_err(|e| format!("Failed to initialize database manager: {}", e))?;
 
-        app.manage(AppState { db_manager });
-        info!("Database initialized successfully");
+        // Initialize API client components
+        let (api_client, memory_cache, upload_queue, upload_worker) =
+            initialize_api_client(db_manager.pool())
+                .await
+                .map_err(|e| format!("Failed to initialize API client: {}", e))?;
+
+        app.manage(AppState {
+            db_manager,
+            api_client,
+            memory_cache,
+            upload_queue,
+            upload_worker,
+        });
+        info!("Database and API client initialized successfully");
     }
 
     Ok(())

@@ -160,8 +160,20 @@ pub async fn import_and_initialize_database(
             format!("Failed to import database: {}", e)
         })?;
 
-    // Update app state with the new manager
-    app.manage(AppState { db_manager });
+    // Initialize API client components
+    let (api_client, memory_cache, upload_queue, upload_worker) =
+        crate::api_client::setup::initialize_api_client(db_manager.pool())
+            .await
+            .map_err(|e| format!("Failed to initialize API client: {}", e))?;
+
+    // Update app state with the new manager and API client
+    app.manage(crate::state::AppState {
+        db_manager,
+        api_client,
+        memory_cache,
+        upload_queue,
+        upload_worker,
+    });
 
     info!("Legacy database imported and initialized successfully");
 
@@ -184,8 +196,20 @@ pub async fn initialize_fresh_database(app: AppHandle) -> Result<(), String> {
             format!("Failed to initialize database: {}", e)
         })?;
 
-    // Update app state with the new manager
-    app.manage(AppState { db_manager: db_manager.clone() });
+    // Initialize API client components
+    let (api_client, memory_cache, upload_queue, upload_worker) =
+        crate::api_client::setup::initialize_api_client(db_manager.pool())
+            .await
+            .map_err(|e| format!("Failed to initialize API client: {}", e))?;
+
+    // Update app state with the new manager and API client
+    app.manage(crate::state::AppState {
+        db_manager: db_manager.clone(),
+        api_client,
+        memory_cache,
+        upload_queue,
+        upload_worker,
+    });
 
     // Set default model configuration for fresh installs
     let pool = db_manager.pool();

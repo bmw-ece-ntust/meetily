@@ -37,6 +37,7 @@ pub(crate) use perf_trace;
 // Declare audio module
 pub mod analytics;
 pub mod api;
+pub mod api_client;
 pub mod audio;
 pub mod config;
 pub mod console_utils;
@@ -748,6 +749,26 @@ pub fn run() {
             audio::import::start_import_audio_command,
             audio::import::cancel_import_command,
             audio::import::is_import_in_progress_command,
+            // API client commands
+            api_client::commands::get_api_config,
+            api_client::commands::set_api_config,
+            api_client::commands::test_api_connection,
+            api_client::commands::list_meetings,
+            api_client::commands::get_meeting,
+            api_client::commands::delete_meeting,
+            api_client::commands::get_transcript,
+            api_client::commands::search_transcript,
+            api_client::commands::list_summaries,
+            api_client::commands::generate_summary,
+            api_client::commands::get_job_status,
+            api_client::commands::cancel_job,
+            api_client::commands::get_upload_queue_count,
+            api_client::commands::clear_upload_queue,
+            api_client::commands::start_upload_worker,
+            api_client::commands::stop_upload_worker,
+            api_client::commands::is_upload_worker_running,
+            api_client::commands::clear_cache,
+            api_client::commands::get_cache_stats,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
