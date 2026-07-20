@@ -1,22 +1,26 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Summary, SummaryResponse } from '@/types';
-import { useSidebar } from '@/components/Sidebar/SidebarProvider';
+import { Summary } from '@/types';
 import Analytics from '@/lib/analytics';
-import { invoke } from '@tauri-apps/api/core';
-import { toast } from 'sonner';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
 import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
-import { ModelConfig } from '@/components/ModelSettingsModal';
-
-// Custom hooks
 import { useMeetingData } from '@/hooks/meeting-details/useMeetingData';
 import { useSummaryGeneration } from '@/hooks/meeting-details/useSummaryGeneration';
-import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
-import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
-import { useConfig } from '@/contexts/ConfigContext';
+
+const WIDTH_STORAGE_KEY = 'meetily.transcriptPanelWidth';
+const DEFAULT_WIDTH_PCT = 33;
+const MIN_WIDTH_PCT = 20;
+const MAX_WIDTH_PCT = 60;
+
+function loadStoredWidth(): number {
+  if (typeof window === 'undefined') return DEFAULT_WIDTH_PCT;
+  const raw = localStorage.getItem(WIDTH_STORAGE_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) return DEFAULT_WIDTH_PCT;
+  return Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, parsed));
+}
 
 export default function PageContent({
   meeting,
@@ -25,13 +29,6 @@ export default function PageContent({
   onAutoGenerateComplete,
   onMeetingUpdated,
   onRefetchTranscripts,
-  // Pagination props for efficient transcript loading
-  segments,
-  hasMore,
-  isLoadingMore,
-  totalCount,
-  loadedCount,
-  onLoadMore,
 }: {
   meeting: any;
   summaryData: Summary | null;
@@ -39,87 +36,27 @@ export default function PageContent({
   onAutoGenerateComplete?: () => void;
   onMeetingUpdated?: () => Promise<void>;
   onRefetchTranscripts?: () => Promise<void>;
-  // Pagination props
-  segments?: any[];
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
-  totalCount?: number;
-  loadedCount?: number;
-  onLoadMore?: () => void;
 }) {
-  console.log('📄 PAGE CONTENT: Initializing with data:', {
-    meetingId: meeting.id,
-    summaryDataKeys: summaryData ? Object.keys(summaryData) : null,
-    transcriptsCount: meeting.transcripts?.length
-  });
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('full');
+  const [transcriptWidthPct, setTranscriptWidthPct] = useState(DEFAULT_WIDTH_PCT);
+  const isDragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // State
-  const [customPrompt, setCustomPrompt] = useState<string>('');
-  const [isRecording] = useState(false);
-  const [summaryResponse] = useState<SummaryResponse | null>(null);
+  const availableTemplates = [
+    { id: 'key_points', name: 'Key Points', description: 'Extract main points from the meeting' },
+    { id: 'action_items', name: 'Action Items', description: 'List action items and tasks' },
+    { id: 'decisions', name: 'Decisions', description: 'Summarize decisions made' },
+    { id: 'full', name: 'Full Summary', description: 'Complete meeting summary' },
+  ];
 
-  // Ref to store the modal open function from SummaryGeneratorButtonGroup
-  const openModelSettingsRef = useRef<(() => void) | null>(null);
-
-  // Sidebar context
-  const { serverAddress } = useSidebar();
-
-  // Get model config from ConfigContext
-  const { modelConfig, setModelConfig } = useConfig();
-
-  // Custom hooks
   const meetingData = useMeetingData({ meeting, summaryData, onMeetingUpdated });
-  const templates = useTemplates();
-
-  // Callback to register the modal open function
-  const handleRegisterModalOpen = (openFn: () => void) => {
-    console.log('📝 Registering modal open function in PageContent');
-    openModelSettingsRef.current = openFn;
-  };
-
-  // Callback to trigger modal open (called from error handler)
-  const handleOpenModelSettings = () => {
-    console.log('🔔 Opening model settings from PageContent');
-    if (openModelSettingsRef.current) {
-      openModelSettingsRef.current();
-    } else {
-      console.warn('⚠️ Modal open function not yet registered');
-    }
-  };
-
-  // Save model config to backend database and sync via event
-  const handleSaveModelConfig = async (config?: ModelConfig) => {
-    if (!config) return;
-    try {
-      await invoke('api_save_model_config', {
-        provider: config.provider,
-        model: config.model,
-        whisperModel: config.whisperModel,
-        apiKey: config.apiKey ?? null,
-        ollamaEndpoint: config.ollamaEndpoint ?? null,
-      });
-
-      // Emit event so ConfigContext and other listeners stay in sync
-      const { emit } = await import('@tauri-apps/api/event');
-      await emit('model-config-updated', config);
-
-      toast.success('Model settings saved successfully');
-    } catch (error) {
-      console.error('Failed to save model config:', error);
-      toast.error('Failed to save model settings');
-    }
-  };
 
   const summaryGeneration = useSummaryGeneration({
     meeting,
     transcripts: meetingData.transcripts,
-    modelConfig: modelConfig,
-    isModelConfigLoading: false, // ConfigContext loads on mount
-    selectedTemplate: templates.selectedTemplate,
+    selectedTemplate,
     onMeetingUpdated,
-    updateMeetingTitle: meetingData.updateMeetingTitle,
     setAiSummary: meetingData.setAiSummary,
-    onOpenModelSettings: handleOpenModelSettings,
   });
 
   const copyOperations = useCopyOperations({
@@ -130,38 +67,56 @@ export default function PageContent({
     blockNoteSummaryRef: meetingData.blockNoteSummaryRef,
   });
 
-  const meetingOperations = useMeetingOperations({
-    meeting,
-  });
+  useEffect(() => {
+    setTranscriptWidthPct(loadStoredWidth());
+  }, []);
 
-  // Track page view
   useEffect(() => {
     Analytics.trackPageView('meeting_details');
   }, []);
 
-  // Auto-generate summary when flag is set
   useEffect(() => {
     let cancelled = false;
-
     const autoGenerate = async () => {
       if (shouldAutoGenerate && meetingData.transcripts.length > 0 && !cancelled) {
-        console.log(`🤖 Auto-generating summary with ${modelConfig.provider}/${modelConfig.model}...`);
-        await summaryGeneration.handleGenerateSummary('');
-
-        // Notify parent that auto-generation is complete (only if not cancelled)
-        if (onAutoGenerateComplete && !cancelled) {
-          onAutoGenerateComplete();
-        }
+        await summaryGeneration.handleGenerateSummary();
+        if (onAutoGenerateComplete && !cancelled) onAutoGenerateComplete();
       }
     };
-
     autoGenerate();
+    return () => { cancelled = true; };
+  }, [shouldAutoGenerate, meeting.id]);
 
-    // Cleanup: cancel if component unmounts or meeting changes
-    return () => {
-      cancelled = true;
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, pct));
+      setTranscriptWidthPct(clamped);
     };
-  }, [shouldAutoGenerate, meeting.id]); // Re-run if meeting changes
+
+    const onUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setTranscriptWidthPct((current) => {
+        localStorage.setItem(WIDTH_STORAGE_KEY, String(current));
+        return current;
+      });
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
 
   return (
     <motion.div
@@ -170,62 +125,44 @@ export default function PageContent({
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="flex flex-col h-screen bg-gray-50"
     >
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={containerRef} className="flex flex-1 overflow-hidden">
         <TranscriptPanel
           transcripts={meetingData.transcripts}
-          customPrompt={customPrompt}
-          onPromptChange={setCustomPrompt}
           onCopyTranscript={copyOperations.handleCopyTranscript}
-          onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
-          isRecording={isRecording}
+          isRecording={false}
           disableAutoScroll={true}
-          // Pagination props for efficient loading
-          usePagination={true}
-          segments={segments}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore}
-          totalCount={totalCount}
-          loadedCount={loadedCount}
-          onLoadMore={onLoadMore}
-          // Retranscription props
           meetingId={meeting.id}
-          meetingFolderPath={meeting.folder_path}
+          meetingTitle={meetingData.meetingTitle || meeting.title}
           onRefetchTranscripts={onRefetchTranscripts}
+          className="hidden md:flex min-w-0 min-h-0 bg-white flex-col relative shrink-0"
+          style={{ width: `${transcriptWidthPct}%` }}
+        />
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize transcript panel"
+          onMouseDown={handleResizeStart}
+          className="hidden md:flex w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-blue-400 active:bg-blue-500 transition-colors"
         />
         <SummaryPanel
           meeting={meeting}
           meetingTitle={meetingData.meetingTitle}
-          onTitleChange={meetingData.handleTitleChange}
-          isEditingTitle={meetingData.isEditingTitle}
-          onStartEditTitle={() => meetingData.setIsEditingTitle(true)}
-          onFinishEditTitle={() => meetingData.setIsEditingTitle(false)}
-          isTitleDirty={meetingData.isTitleDirty}
           summaryRef={meetingData.blockNoteSummaryRef}
-          isSaving={meetingData.isSaving}
-          onSaveAll={meetingData.saveAllChanges}
           onCopySummary={copyOperations.handleCopySummary}
-          onOpenFolder={meetingOperations.handleOpenMeetingFolder}
           aiSummary={meetingData.aiSummary}
           summaryStatus={summaryGeneration.summaryStatus}
           transcripts={meetingData.transcripts}
-          modelConfig={modelConfig}
-          setModelConfig={setModelConfig}
-          onSaveModelConfig={handleSaveModelConfig}
           onGenerateSummary={summaryGeneration.handleGenerateSummary}
           onStopGeneration={summaryGeneration.handleStopGeneration}
-          customPrompt={customPrompt}
-          summaryResponse={summaryResponse}
           onSaveSummary={meetingData.handleSaveSummary}
-          onSummaryChange={meetingData.handleSummaryChange}
-          onDirtyChange={meetingData.setIsSummaryDirty}
-          summaryError={summaryGeneration.summaryError}
           onRegenerateSummary={summaryGeneration.handleRegenerateSummary}
+          availableTemplates={availableTemplates}
+          selectedTemplate={selectedTemplate}
+          onTemplateSelect={(templateId) => setSelectedTemplate(templateId)}
+          onSummaryChange={meetingData.setAiSummary}
+          onDirtyChange={() => {}}
+          summaryError={summaryGeneration.summaryError}
           getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
-          availableTemplates={templates.availableTemplates}
-          selectedTemplate={templates.selectedTemplate}
-          onTemplateSelect={templates.handleTemplateSelection}
-          isModelConfigLoading={false}
-          onOpenModelSettings={handleRegisterModalOpen}
         />
       </div>
     </motion.div>

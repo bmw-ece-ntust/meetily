@@ -4,18 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Meetily** is an AI meeting assistant that captures, transcribes, and summarizes meetings. Audio is captured locally and sent to a user-configured cloud STT provider (Deepgram, ElevenLabs, Groq, OpenAI, or any OpenAI-compatible endpoint). The supported application is the Tauri desktop app with a Rust core.
+**Meetily** is a privacy-first AI meeting assistant that captures, transcribes, and summarizes meetings using the ai-meeting-agent REST API backend. The desktop app is built with Tauri (Rust + Next.js).
 
 1. **Frontend**: Tauri-based desktop application (Rust + Next.js + TypeScript)
-2. **Rust Backend**: Tauri commands, audio capture, transcription dispatch, storage, and summarization orchestration
-3. **Legacy Backend Archive**: the old Python/FastAPI, Docker, and standalone whisper-server backend under `backend/` is archived and unsupported
+2. **Rust Core**: Tauri commands, audio capture, recording management, API client
+3. **Backend**: ai-meeting-agent REST API (transcription and summarization on remote server)
 
 ### Key Technology Stack
 - **Desktop App**: Tauri 2.x (Rust) + Next.js 14 + React 18
-- **Audio Processing**: Rust (cpal, professional audio mixing)
-- **Transcription**: Cloud STT providers (Deepgram, ElevenLabs, Groq, OpenAI, custom OpenAI-compatible endpoints) reached via reqwest multipart upload
-- **App API Surface**: Tauri commands and events, not a separate FastAPI service
-- **LLM Integration**: Claude, Groq, OpenAI, OpenRouter, Ollama (local), custom OpenAI-compatible endpoints
+- **Audio Processing**: Rust (cpal, professional audio mixing and recording)
+- **Transcription**: ai-meeting-agent API (Whisper.cpp on DGX server)
+- **Summarization**: ai-meeting-agent API (LLM on DGX server)
+- **App API Surface**: Tauri commands and events
+- **API Client**: HTTP client with offline queue and in-memory cache
 
 ## Essential Development Commands
 
@@ -40,16 +41,9 @@ pnpm run tauri:dev          # Full Tauri development mode
 pnpm run tauri:build        # Production build
 ```
 
-### Legacy Backend Archive
-
-**Location**: `/backend`
-
-The Python/FastAPI backend, Docker setup, and standalone whisper-server scripts are archived for historical reference and migration context only. Do not use them for current development, new installs, production deployments, or issue triage for the supported app.
-
-The archived FastAPI service had unauthenticated, development-oriented CORS behavior. Treat that behavior as obsolete legacy context, not as a supported production API.
-
 ### Service Endpoints
 - **Frontend Dev**: http://localhost:3118
+- **Backend API**: ai-meeting-agent REST API (default: http://127.0.0.1:8080)
 
 ## High-Level Architecture
 
@@ -59,18 +53,23 @@ The archived FastAPI service had unauthenticated, development-oriented CORS beha
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Frontend (Tauri Desktop App)                  │
 │  ┌──────────────────┐  ┌─────────────────┐  ┌────────────────┐ │
-│  │   Next.js UI     │  │  Rust Backend   │  │ Cloud STT      │ │
-│  │  (React/TS)      │←→│  (Audio + IPC)  │←→│ (Provider HTTP)│ │
+│  │   Next.js UI     │  │  Rust Core      │  │  API Client    │ │
+│  │  (React/TS)      │←→│  (Audio + IPC)  │←→│  (HTTP + Queue)│ │
 │  └──────────────────┘  └─────────────────┘  └────────────────┘ │
-│         ↑ Tauri Events           ↑ Audio Pipeline               │
-└─────────────────────────────────────────────────────────────────┘
+│         ↑ Tauri Events           ↑ Audio Pipeline        ↓      │
+└──────────────────────────────────────────────────────────|──────┘
+                                                           ↓
+                              ┌────────────────────────────────┐
+                              │  ai-meeting-agent REST API     │
+                              │  (Transcription + Summary)     │
+                              └────────────────────────────────┘
 ```
 
-The current app does not require a separate FastAPI tier. Meeting persistence, audio capture, cloud transcription dispatch, and summary orchestration are handled through the Rust/Tauri core.
+The app uses ai-meeting-agent REST API for transcription and summarization. Audio recording is local, then uploaded to the API server.
 
 ### Audio Processing Pipeline (Critical Understanding)
 
-The audio system has **two parallel paths** with different purposes:
+The audio system records locally, then uploads to ai-meeting-agent API for transcription:
 
 ```
 Raw Audio (Mic + System)
@@ -81,14 +80,14 @@ Raw Audio (Mic + System)
 └─────────────┬──────────────────────────┬───────────────────┘
               ↓                          ↓
     ┌─────────────────┐        ┌─────────────────────┐
-    │ Recording Path  │        │ Transcription Path  │
-    │ (Pre-mixed)     │        │ (VAD-filtered)      │
+    │ Recording Path  │        │ Upload to API       │
+    │ (Pre-mixed)     │        │ (After recording)   │
     └─────────────────┘        └─────────────────────┘
               ↓                          ↓
-     RecordingSaver.save()      Provider.transcribe()
+    RecordingSaver.save()      API transcription job
 ```
 
-**Key Insight**: The pipeline performs **professional audio mixing** (RMS-based ducking, clipping prevention) for recording, while simultaneously applying **Voice Activity Detection (VAD)** to send only speech segments to the cloud STT provider.
+**Key Insight**: The pipeline performs **professional audio mixing** (RMS-based ducking, clipping prevention) for recording. After recording completes, the audio file is uploaded to ai-meeting-agent API, which handles transcription and returns results via job polling.
 
 ### Audio Device Modularization (Recently Completed)
 
@@ -163,16 +162,6 @@ await listen<TranscriptUpdate>('transcript-update', (event) => {
   setTranscripts(prev => [...prev, event.payload]);
 });
 ```
-
-### Transcription Provider Configuration
-
-**Provider Storage**: API keys and provider/model selection live in the `transcript_settings` table (see `database/repositories/setting.rs`). The active provider is selected per-user from the Transcript Settings UI and applies to live recording, audio-file import, and meeting retranscription.
-
-**Adding a New Provider** (when needed):
-1. Add the provider id to `TranscriptModelProps` in `frontend/src/components/TranscriptSettings.tsx`
-2. Add a `TranscriptionProvider` impl in `frontend/src-tauri/src/audio/transcription/`
-3. Register the impl in the provider factory in `audio/transcription/engine.rs`
-4. Add model options to the `modelOptions` map in `TranscriptSettings.tsx`
 
 ## Critical Development Patterns
 
@@ -259,7 +248,7 @@ macro_rules! perf_debug {
 Key components:
 - `AudioMixerRingBuffer`: Manages mic + system audio synchronization
 - `ProfessionalAudioMixer`: RMS-based ducking and mixing
-- `AudioPipelineManager`: Orchestrates VAD, mixing, and distribution
+- `AudioPipelineManager`: Orchestrates mixing and distribution
 
 **Testing Audio Changes**:
 ```bash
@@ -269,12 +258,6 @@ RUST_LOG=app_lib::audio=debug ./clean_run.sh
 # Monitor audio metrics in real-time
 # Check Developer Console in the app (Cmd+Shift+I on macOS)
 ```
-
-### Tauri Backend Development
-
-Current app behavior should be implemented in the Rust/Tauri core, not in the archived Python backend. Add new frontend-facing behavior through Tauri commands/events and existing Rust services under `frontend/src-tauri/src`.
-
-Do not add new endpoints to `backend/app/main.py`; that FastAPI code is legacy archive material only.
 
 ## Testing and Debugging
 
@@ -326,12 +309,6 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 - Use `perf_debug!()` / `perf_trace!()` for hot-path logging (zero cost in release)
 - Batch audio metrics using `AudioMetricsBatcher` (pipeline.rs)
 - Pre-allocate buffers with `AudioBufferPool` (buffer_pool.rs)
-- VAD filtering reduces cloud STT cost by sending only speech segments (~70% reduction)
-
-### Cloud Transcription
-- Provider choice is per-user, stored in `transcript_settings`
-- API keys are persisted encrypted (see `api_save_transcript_api_key` in `api/api.rs`)
-- All providers use the same multipart upload pattern in `audio/transcription/`
 
 ### Frontend Performance
 - React state updates batched via Sidebar context
@@ -347,15 +324,9 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
    - Windows: WASAPI exclusive mode can conflict with other apps
    - System audio requires virtual device (BlackHole on macOS, WASAPI loopback on Windows)
 
-3. **Provider Switching**: The active STT provider can be changed in Transcript Settings without restart. The provider factory in `audio/transcription/engine.rs` resolves the new provider on the next transcription call.
+3. **File Paths**: Use Tauri's path APIs (`downloadDir`, etc.) for cross-platform compatibility. Never hardcode paths.
 
-4. **No Separate Backend Dependency**: Meeting persistence, transcription, and LLM features are handled by the Tauri app. Do not reintroduce the archived FastAPI backend as a supported requirement.
-
-5. **Legacy FastAPI Security Context**: The archived FastAPI/CORS behavior is unsupported legacy code and must not be treated as a supported production API.
-
-6. **File Paths**: Use Tauri's path APIs (`downloadDir`, etc.) for cross-platform compatibility. Never hardcode paths.
-
-7. **Audio Permissions**: Request permissions early. macOS requires both microphone AND screen recording for system audio.
+4. **Audio Permissions**: Request permissions early. macOS requires both microphone AND screen recording for system audio.
 
 ## Repository-Specific Conventions
 
@@ -383,8 +354,3 @@ $env:RUST_LOG="debug"; ./clean_run_windows.bat
 **UI Components**:
 - [frontend/src/app/page.tsx](frontend/src/app/page.tsx) - Main recording interface
 - [frontend/src/components/Sidebar/SidebarProvider.tsx](frontend/src/components/Sidebar/SidebarProvider.tsx) - Global state management
-
-**Transcription Providers**:
-- [frontend/src-tauri/src/audio/transcription/](frontend/src-tauri/src/audio/transcription/) - Provider trait and per-provider implementations
-- [frontend/src-tauri/src/audio/transcription/engine.rs](frontend/src-tauri/src/audio/transcription/engine.rs) - Provider factory and dispatch
-- [frontend/src/components/TranscriptSettings.tsx](frontend/src/components/TranscriptSettings.tsx) - Provider/model selection UI

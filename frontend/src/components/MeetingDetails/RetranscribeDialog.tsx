@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Globe, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { RefreshCw, Globe, Loader2, AlertCircle, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ interface RetranscribeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   meetingId: string;
-  meetingFolderPath: string | null;
+  meetingFolderPath?: string | null;
   onComplete?: () => void;
 }
 
@@ -54,10 +54,9 @@ export function RetranscribeDialog({
   open,
   onOpenChange,
   meetingId,
-  meetingFolderPath,
   onComplete,
 }: RetranscribeDialogProps) {
-  const { selectedLanguage, transcriptModelConfig } = useConfig();
+  const { selectedLanguage } = useConfig();
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<RetranscriptionProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +83,7 @@ export function RetranscribeDialog({
       setError(null);
       setSelectedLang(selectedLanguage || 'auto');
     }
-  }, [open, selectedLanguage, transcriptModelConfig]);
+  }, [open, selectedLanguage]);
 
   // Listen for retranscription events
   useEffect(() => {
@@ -165,11 +164,6 @@ export function RetranscribeDialog({
   }, [open, meetingId]);
 
   const handleStartRetranscription = async () => {
-    if (!meetingFolderPath) {
-      setError('Meeting folder path not available');
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setProgress(null);
@@ -178,16 +172,16 @@ export function RetranscribeDialog({
       const languageToSend = selectedLang === 'auto' ? null : selectedLang;
       await Analytics.track('enhance_transcript_started', {
         language: selectedLang === 'auto' ? 'auto' : selectedLang,
-        model_provider: transcriptModelConfig.provider || '',
-        model_name: transcriptModelConfig.model || ''
+        model_provider: 'api',
+        model_name: ''
       });
 
       await invoke('start_retranscription_command', {
         meetingId,
-        meetingFolderPath,
+        meetingFolderPath: null,
         language: languageToSend,
-        model: transcriptModelConfig.model,
-        provider: transcriptModelConfig.provider,
+        model: null,
+        provider: null,
       });
     } catch (err: any) {
       setIsProcessing(false);
@@ -328,7 +322,7 @@ export function RetranscribeDialog({
               <Button
                 onClick={handleStartRetranscription}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!meetingFolderPath}
+                disabled={!meetingId}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Start Retranscription

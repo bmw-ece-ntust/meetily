@@ -2,7 +2,6 @@
 
 import { Transcript } from '@/types';
 import { useEffect, useRef, useState } from 'react';
-import { ConfidenceIndicator } from './ConfidenceIndicator';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { RecordingStatusBar } from './RecordingStatusBar';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -294,16 +293,20 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                   {transcript.duration !== undefined && (
                     <span className="text-xs text-gray-400">
                       {transcript.duration.toFixed(1)}s
-                      {transcript.confidence !== undefined && (
-                        <ConfidenceIndicator
-                          confidence={transcript.confidence}
-                          showIndicator={showConfidence}
-                        />
+                      {transcript.confidence !== undefined && showConfidence && (
+                        <span className="ml-2">
+                          ({(transcript.confidence * 100).toFixed(0)}%)
+                        </span>
                       )}
                     </span>
                   )}
                 </TooltipContent>
               </Tooltip>
+              {transcript.speaker?.trim() && (
+                <span className="text-xs font-medium text-gray-500 mt-1 flex-shrink-0">
+                  {transcript.speaker.trim()}
+                </span>
+              )}
               <div className="flex-1">
                 {isStreaming ? (
                   // Streaming transcript - show in bubble (full width)

@@ -97,9 +97,7 @@
         "resources": [
             "templates/*.json"
         ],
-        "externalBin": [
-            "binaries/ffmpeg"
-        ],
+        "externalBin": [],
         "macOS": {
             "entitlements": "entitlements.plist",
             "signingIdentity": "-",

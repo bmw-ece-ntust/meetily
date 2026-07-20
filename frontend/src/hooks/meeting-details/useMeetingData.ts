@@ -14,8 +14,9 @@ interface UseMeetingDataProps {
 export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMeetingDataProps) {
   // State
   // Use prop directly since summary generation fetches transcripts independently
-  const transcripts = meeting.transcripts;
-  const [meetingTitle, setMeetingTitle] = useState(meeting.title || '+ New Call');
+  // Add defensive null check to prevent undefined transcripts
+  const transcripts = Array.isArray(meeting?.transcripts) ? meeting.transcripts : [];
+  const [meetingTitle, setMeetingTitle] = useState(meeting?.title || '+ New Call');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isTitleDirty, setIsTitleDirty] = useState(false);
   const [aiSummary, setAiSummary] = useState<Summary | null>(summaryData);
@@ -47,8 +48,8 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
 
   const handleSaveMeetingTitle = useCallback(async () => {
     try {
-      await invokeTauri('api_save_meeting_title', {
-        meetingId: meeting.id,
+      await invokeTauri('update_meeting', {
+        id: meeting.id,
         title: meetingTitle,
       });
 

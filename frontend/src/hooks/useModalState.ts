@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
-import { TranscriptModelProps } from '@/components/TranscriptSettings';
 
 export type ModalType =
   | 'modelSettings'
@@ -43,7 +42,7 @@ interface UseModalStateReturn {
  * - Event listeners for chunk drops, transcription errors, model downloads
  * - Auto-close on model download completion
  */
-export function useModalState(transcriptModelConfig?: TranscriptModelProps): UseModalStateReturn {
+export function useModalState(_transcriptModelConfig?: unknown): UseModalStateReturn {
   // Modal visibility state
   const [modals, setModals] = useState<ModalState>({
     modelSettings: false,

@@ -1,6 +1,5 @@
 // src/audio/mod.rs
 pub mod audio_processing;
-pub mod decoder;
 pub mod encode;
 pub mod ffmpeg;
 pub mod vad;
@@ -28,7 +27,6 @@ pub mod level_monitor;
 pub mod simple_level_monitor;
 pub mod buffer_pool;
 pub mod post_processor;
-pub mod hardware_detector;
 pub mod async_logger;
 pub mod batch_processor;
 pub mod system_detector;
@@ -36,17 +34,8 @@ pub mod system_audio_commands;
 pub mod device_monitor;  // NEW: Device disconnect/reconnect monitoring
 pub mod playback_monitor; // NEW: Playback device detection for BT warnings
 
-// Transcription module (provider abstraction, engine management, worker pool)
-pub mod transcription;
-
-// Shared utilities for import and retranscription
-pub(crate) mod common;
-
 // Shared constants
 pub mod constants;
-
-// Retranscription module (re-process stored audio with different settings)
-pub mod retranscription;
 
 // Import module (import external audio files as new meetings)
 pub mod import;
@@ -54,7 +43,7 @@ pub mod import;
 pub use devices::{
     default_input_device, default_output_device, get_device_and_config, list_audio_devices,
     parse_audio_device, trigger_audio_permission,
-    AudioDevice, AudioTranscriptionEngine, DeviceControl, DeviceType,
+    AudioDevice, DeviceControl, DeviceType,
     LAST_AUDIO_CAPTURE,
 };
 
@@ -86,7 +75,7 @@ pub use stream::{AudioStreamManager};
 pub use recording_manager::{RecordingManager};
 pub use recording_commands::{
     start_recording, start_recording_with_devices, stop_recording,
-    is_recording, get_transcription_status, RecordingArgs, TranscriptionStatus, TranscriptUpdate
+    is_recording, get_transcription_status, RecordingArgs, TranscriptionStatus
 };
 pub use recording_preferences::{
     RecordingPreferences, get_default_recordings_folder
@@ -95,7 +84,6 @@ pub use recording_saver::RecordingSaver;
 pub use level_monitor::{AudioLevelMonitor, AudioLevelData, AudioLevelUpdate};
 pub use buffer_pool::{AudioBufferPool, PooledBuffer};
 pub use post_processor::{PostProcessor, PostProcessRequest, PostProcessResponse};
-pub use hardware_detector::{HardwareProfile, AdaptiveWhisperConfig, PerformanceTier, GpuType};
 pub use encode::{
     encode_single_audio, AudioInput
 };
@@ -111,11 +99,5 @@ pub use diagnostics::{
 // Export FFmpeg mixer
 pub use ffmpeg_mixer::{FFmpegAudioMixer, BufferStats, RNNOISE_APPLY_ENABLED};
 
-pub use vad::{extract_speech_16k};
-
-// Export decoder for retranscription
-pub use decoder::{decode_audio_file, DecodedAudio};
-
 // Export audio constants
 pub use constants::AUDIO_EXTENSIONS;
-

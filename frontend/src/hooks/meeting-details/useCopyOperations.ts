@@ -27,13 +27,17 @@ export function useCopyOperations({
       console.log('📊 Fetching all transcripts for copying:', meetingId);
 
       // First, get total count by fetching first page
-      const firstPage = await invokeTauri('api_get_meeting_transcripts', {
+      const firstPage = await invokeTauri('get_transcript', {
         meetingId,
         limit: 1,
         offset: 0,
-      }) as { transcripts: Transcript[]; total_count: number; has_more: boolean };
+      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string; speaker?: string }> } }; error?: string };
 
-      const totalCount = firstPage.total_count;
+      if (!firstPage.success) {
+        throw new Error(firstPage.error || 'Failed to fetch transcripts');
+      }
+
+      const totalCount = firstPage.data?.transcript?.segments?.length || 0;
       console.log(`📊 Total transcripts in database: ${totalCount}`);
 
       if (totalCount === 0) {
@@ -41,14 +45,28 @@ export function useCopyOperations({
       }
 
       // Fetch all transcripts in one call
-      const allData = await invokeTauri('api_get_meeting_transcripts', {
+      const allData = await invokeTauri('get_transcript', {
         meetingId,
         limit: totalCount,
         offset: 0,
-      }) as { transcripts: Transcript[]; total_count: number; has_more: boolean };
+      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string; speaker?: string }> } }; error?: string };
 
-      console.log(`✅ Fetched ${allData.transcripts.length} transcripts from database for copying`);
-      return allData.transcripts;
+      if (!allData.success) {
+        throw new Error(allData.error || 'Failed to fetch transcripts');
+      }
+
+      const transcripts = (allData.data?.transcript?.segments || []).map((segment) => ({
+        id: String(segment.id),
+        text: segment.text,
+        timestamp: '',
+        audio_start_time: segment.start,
+        audio_end_time: segment.end,
+        duration: segment.end - segment.start,
+        speaker: segment.speaker,
+      }));
+
+      console.log(`✅ Fetched ${transcripts.length} transcripts from database for copying`);
+      return transcripts;
     } catch (error) {
       console.error('❌ Error fetching all transcripts:', error);
       toast.error('Failed to fetch transcripts for copying');
@@ -86,7 +104,11 @@ export function useCopyOperations({
     const header = `# Transcript of the Meeting: ${meeting.id} - ${meetingTitle ?? meeting.title}\n\n`;
     const date = `## Date: ${new Date(meeting.created_at).toLocaleDateString()}\n\n`;
     const fullTranscript = allTranscripts
-      .map(t => `${formatTime(t.audio_start_time, t.timestamp)} ${t.text}  `)
+      .map(t => {
+        const time = formatTime(t.audio_start_time, t.timestamp);
+        const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
+        return `${time} ${speaker}${t.text}  `;
+      })
       .join('\n');
 
     await navigator.clipboard.writeText(header + date + fullTranscript);

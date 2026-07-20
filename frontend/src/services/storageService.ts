@@ -54,7 +54,11 @@ export class StorageService {
    * @returns Promise with meeting details
    */
   async getMeeting(meetingId: string): Promise<Meeting> {
-    return invoke<Meeting>('api_get_meeting', { meetingId });
+    const response = await invoke<{ success: boolean; data?: Meeting; error?: string }>('get_meeting', { id: meetingId });
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to load meeting');
+    }
+    return response.data;
   }
 
   /**
@@ -62,7 +66,11 @@ export class StorageService {
    * @returns Promise with array of meetings
    */
   async getMeetings(): Promise<Meeting[]> {
-    return invoke<Meeting[]>('api_get_meetings');
+    const response = await invoke<{ success: boolean; data?: { meetings?: Meeting[] }; error?: string }>('list_meetings', { limit: 100, offset: 0 });
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to load meetings');
+    }
+    return response.data?.meetings || [];
   }
 }
 

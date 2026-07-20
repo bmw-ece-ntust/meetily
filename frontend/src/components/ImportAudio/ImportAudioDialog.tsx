@@ -1,17 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload,
-  Globe,
   Loader2,
   AlertCircle,
-  CheckCircle2,
-  X,
-  Cpu,
   FileAudio,
   Clock,
   HardDrive,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import {
   Dialog,
@@ -23,21 +17,11 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
 import { toast } from 'sonner';
-import { useConfig } from '@/contexts/ConfigContext';
-import { useImportAudio, ImportResult } from '@/hooks/useImportAudio';
+import { useImportAudio } from '@/hooks/useImportAudio';
 import { useRouter } from 'next/navigation';
 import { useSidebar } from '../Sidebar/SidebarProvider';
-import { LANGUAGES } from '@/constants/languages';
-
-
+import { useJobQueue } from '@/contexts/JobQueueContext';
 
 interface ImportAudioDialogProps {
   open: boolean;
@@ -72,64 +56,33 @@ export function ImportAudioDialog({
 }: ImportAudioDialogProps) {
   const router = useRouter();
   const { refetchMeetings } = useSidebar();
-  const { selectedLanguage, transcriptModelConfig } = useConfig();
+  const { enqueueImport, activeCount, maxConcurrent, queuedCount } = useJobQueue();
 
   const [title, setTitle] = useState('');
-  const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Always start as false — represents "dialog has not yet been opened".
-  // Do NOT initialize from the `open` prop: if the component mounts with open=true
-  // (e.g. drag-drop path), we still need the initialization effect to run.
   const prevOpenRef = useRef(false);
-
-  const handleImportComplete = useCallback((result: ImportResult) => {
-    toast.success(`Import complete! ${result.segments_count} segments created.`);
-
-    // Refresh meetings list then navigate to the imported meeting
-    refetchMeetings();
-    onComplete?.();
-    onOpenChange(false);
-    router.push(`/meeting-details?id=${result.meeting_id}`);
-  }, [router, refetchMeetings, onComplete, onOpenChange]);
-
-  const handleImportError = useCallback((error: string) => {
-    toast.error('Import failed', { description: error });
-  }, []);
 
   const {
     status,
     fileInfo,
-    progress,
     error,
-    isProcessing,
-    isBusy,
     selectFile,
     validateFile,
-    startImport,
-    cancelImport,
     reset,
-  } = useImportAudio({
-    onComplete: handleImportComplete,
-    onError: handleImportError,
-  });
+  } = useImportAudio();
 
-  // Reset state only when dialog transitions from closed to open
-  // This prevents re-initialization when config changes while dialog is already open (Bug #4 & #5)
   useEffect(() => {
     const wasOpen = prevOpenRef.current;
     prevOpenRef.current = open;
 
-    // Only initialize when transitioning from closed (false) to open (true)
     if (open && !wasOpen) {
       reset();
       setTitle('');
       setTitleModifiedByUser(false);
-      setSelectedLang(selectedLanguage || 'auto');
-      setShowAdvanced(false);
+      setSubmitError(null);
 
-      // Validate preselected file if provided
       if (preselectedFile) {
         validateFile(preselectedFile).then((info) => {
           if (info) {
@@ -138,9 +91,8 @@ export function ImportAudioDialog({
         });
       }
     }
-  }, [open, preselectedFile, selectedLanguage, transcriptModelConfig, reset, validateFile]);
+  }, [open, preselectedFile, reset, validateFile]);
 
-  // Update title when fileInfo changes
   useEffect(() => {
     if (fileInfo && !titleModifiedByUser && title !== fileInfo.filename) {
       setTitle(fileInfo.filename);
@@ -151,72 +103,65 @@ export function ImportAudioDialog({
     const info = await selectFile();
     if (info) {
       setTitle(info.filename);
+      setSubmitError(null);
     }
   };
 
-  const handleStartImport = async () => {
+  const handleStartImport = useCallback(() => {
     if (!fileInfo) return;
 
-    await startImport(
-      fileInfo.path,
-      title || fileInfo.filename,
-      selectedLang === 'auto' ? null : selectedLang,
-      transcriptModelConfig.model,
-      transcriptModelConfig.provider
-    );
-  };
+    const meetingTitle = title || fileInfo.filename;
 
-  const handleCancel = async () => {
-    if (isProcessing) {
-      await cancelImport();
-      toast.info('Import cancelled');
-    }
+    enqueueImport({
+      sourcePath: fileInfo.path,
+      title: meetingTitle,
+      language: null,
+      model: null,
+      provider: null,
+      onComplete: async (meetingId) => {
+        await refetchMeetings();
+        onComplete?.();
+        router.push(`/meeting-details?id=${meetingId}`);
+      },
+    });
+
+    toast.info('Import running in background', {
+      description:
+        activeCount + queuedCount >= maxConcurrent
+          ? `Queued — max ${maxConcurrent} concurrent jobs`
+          : meetingTitle,
+    });
+
     onOpenChange(false);
-  };
+    reset();
+    setTitle('');
+    setTitleModifiedByUser(false);
+    setSubmitError(null);
+  }, [
+    activeCount,
+    enqueueImport,
+    fileInfo,
+    maxConcurrent,
+    onComplete,
+    onOpenChange,
+    queuedCount,
+    refetchMeetings,
+    reset,
+    router,
+    title,
+  ]);
 
-  // Prevent closing during processing
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen && isProcessing) {
-      return;
-    }
-    onOpenChange(newOpen);
-  };
-
-  const handleEscapeKeyDown = (event: KeyboardEvent) => {
-    if (isProcessing) {
-      event.preventDefault();
-    }
-  };
-
-  const handleInteractOutside = (event: Event) => {
-    if (isProcessing) {
-      event.preventDefault();
-    }
-  };
+  const displayError = submitError || error;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className="sm:max-w-[500px]"
-        onEscapeKeyDown={handleEscapeKeyDown}
-        onInteractOutside={handleInteractOutside}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {isProcessing ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                Importing Audio...
-              </>
-            ) : error ? (
+            {displayError ? (
               <>
                 <AlertCircle className="h-5 w-5 text-red-600" />
                 Import Failed
-              </>
-            ) : status === 'complete' ? (
-              <>
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                Import Complete
               </>
             ) : (
               <>
@@ -226,17 +171,14 @@ export function ImportAudioDialog({
             )}
           </DialogTitle>
           <DialogDescription>
-            {isProcessing
-              ? progress?.message || 'Processing audio...'
-              : error
-              ? 'An error occurred during import'
-              : 'Import an audio file to create a new meeting with transcripts'}
+            {displayError
+              ? 'An error occurred'
+              : 'Import runs in the background. Track progress in the jobs panel (bottom-right).'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* File selection / info */}
-          {!isProcessing && !error && (
+          {!displayError && (
             <>
               {fileInfo ? (
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
@@ -258,7 +200,6 @@ export function ImportAudioDialog({
                     </div>
                   </div>
 
-                  {/* Editable title */}
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-700">Meeting Title</label>
                     <Input
@@ -294,79 +235,18 @@ export function ImportAudioDialog({
                   <p className="text-sm text-gray-500 mt-2">MP4, WAV, MP3, FLAC, OGG, MKV, WebM, WMA</p>
                 </div>
               )}
-
-              {/* Advanced options (collapsible) */}
-              {fileInfo && (
-                <div className="border rounded-lg">
-                  <button
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="w-full flex items-center justify-between p-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    <span>Advanced Options</span>
-                    {showAdvanced ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
-
-                  {showAdvanced && (
-                    <div className="p-3 pt-0 space-y-4 border-t">
-                      {/* Language selector */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">Language</span>
-                        </div>
-                        <Select value={selectedLang} onValueChange={setSelectedLang}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select language" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-60">
-                            {LANGUAGES.map((lang) => (
-                              <SelectItem key={lang.code} value={lang.code}>
-                                {lang.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </>
           )}
 
-          {/* Progress display */}
-          {isProcessing && progress && (
-            <div className="space-y-2">
-              <div className="relative">
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${Math.min(progress.progress_percentage, 100)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-gray-600 mt-1">
-                  <span>{progress.stage}</span>
-                  <span>{Math.round(progress.progress_percentage)}%</span>
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground text-center">{progress.message}</p>
-            </div>
-          )}
-
-          {/* Error display */}
-          {error && (
+          {displayError && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-800">{error}</p>
+              <p className="text-sm text-red-800">{displayError}</p>
             </div>
           )}
         </div>
 
         <DialogFooter>
-          {!isProcessing && !error && (
+          {!displayError && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
@@ -377,22 +257,22 @@ export function ImportAudioDialog({
                 disabled={!fileInfo}
               >
                 <Upload className="h-4 w-4 mr-2" />
-                Import
+                Import in Background
               </Button>
             </>
           )}
-          {isProcessing && (
-            <Button variant="outline" onClick={handleCancel}>
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
-          )}
-          {error && (
+          {displayError && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Close
               </Button>
-              <Button onClick={reset} variant="outline">
+              <Button
+                onClick={() => {
+                  reset();
+                  setSubmitError(null);
+                }}
+                variant="outline"
+              >
                 Try Again
               </Button>
             </>

@@ -9,7 +9,7 @@ export interface Language {
   name: string;
 }
 
-// ISO 639-1 language codes supported by Whisper
+// ISO 639-1 language codes supported by transcription API
 const LANGUAGES: Language[] = [
   { code: 'auto', name: 'Auto Detect (Original Language)' },
   { code: 'auto-translate', name: 'Auto Detect (Translate to English)' },
@@ -118,18 +118,17 @@ interface LanguageSelectionProps {
   selectedLanguage: string;
   onLanguageChange: (language: string) => void;
   disabled?: boolean;
-  provider?: 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+  provider?: 'openai';
 }
 
 export function LanguageSelection({
   selectedLanguage,
   onLanguageChange,
   disabled = false,
-  provider = 'deepgram'
+  provider = 'openai'
 }: LanguageSelectionProps) {
   const [saving, setSaving] = useState(false);
   const { setSelectedLanguage } = useConfig();
-
   const availableLanguages = LANGUAGES;
 
   const handleLanguageChange = async (languageCode: string) => {

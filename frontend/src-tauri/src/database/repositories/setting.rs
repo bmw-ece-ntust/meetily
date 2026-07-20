@@ -24,7 +24,7 @@ pub struct SaveTranscriptConfigRequest {
 
 pub struct SettingsRepository;
 
-// Transcript providers: deepgram, elevenLabs, groq, openai
+// Transcript providers: deepgram, elevenLabs, groq, openai (API-backed)
 // Summary providers: openai, claude, ollama, groq, added openrouter
 // NOTE: Handle data exclusion in the higher layer as this is database abstraction layer(using SELECT *)
 
@@ -178,6 +178,8 @@ impl SettingsRepository {
         api_key: &str,
     ) -> std::result::Result<(), sqlx::Error> {
         let api_key_column = match provider {
+            "localWhisper" => "whisperApiKey",  // Legacy - no longer supported
+            "parakeet" => return Ok(()),        // Legacy - no longer supported
             "deepgram" => "deepgramApiKey",
             "elevenLabs" => "elevenLabsApiKey",
             "groq" => "groqApiKey",
@@ -192,11 +194,14 @@ impl SettingsRepository {
         let query = format!(
             r#"
             INSERT INTO transcript_settings (id, provider, model, "{}")
-            VALUES ('1', $2, 'whisper-1', $1)
+            VALUES ('1', '{}', '{}', $1)
             ON CONFLICT(id) DO UPDATE SET
                 "{}" = $1
             "#,
-            api_key_column, api_key_column
+            api_key_column,
+            crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
+            crate::config::DEFAULT_TRANSCRIPTION_MODEL,
+            api_key_column
         );
         sqlx::query(&query).bind(api_key).bind(provider).execute(pool).await?;
 
@@ -208,6 +213,8 @@ impl SettingsRepository {
         provider: &str,
     ) -> std::result::Result<Option<String>, sqlx::Error> {
         let api_key_column = match provider {
+            "localWhisper" => "whisperApiKey",  // Legacy - no longer supported
+            "parakeet" => return Ok(None),      // Legacy - no longer supported
             "deepgram" => "deepgramApiKey",
             "elevenLabs" => "elevenLabsApiKey",
             "groq" => "groqApiKey",
@@ -340,5 +347,42 @@ impl SettingsRepository {
         .await?;
 
         Ok(())
+    }
+
+    /// Save API configuration (URL and optional API key) for ai-meeting-agent
+    pub async fn save_api_config(
+        pool: &SqlitePool,
+        api_url: &str,
+        api_key: Option<&str>,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO api_config (id, base_url, api_key, updated_at)
+            VALUES (1, $1, $2, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                base_url = excluded.base_url,
+                api_key = excluded.api_key,
+                updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(api_url)
+        .bind(api_key)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get API configuration (URL and optional API key) for ai-meeting-agent
+    pub async fn get_api_config(
+        pool: &SqlitePool,
+    ) -> std::result::Result<(Option<String>, Option<String>), sqlx::Error> {
+        let result: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT base_url, api_key FROM api_config WHERE id = 1 LIMIT 1"
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(result.unwrap_or((None, None)))
     }
 }

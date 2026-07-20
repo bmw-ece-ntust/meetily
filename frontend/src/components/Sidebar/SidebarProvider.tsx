@@ -84,33 +84,29 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   // Extract fetchMeetings as a reusable function
   const fetchMeetings = React.useCallback(async () => {
-    if (serverAddress) {
-      try {
-        const meetings = await invoke('api_get_meetings') as Array<{ id: string, title: string }>;
-        const transformedMeetings = meetings.map((meeting: any) => ({
-          id: meeting.id,
-          title: meeting.title
-        }));
-        setMeetings(transformedMeetings);
-        Analytics.trackBackendConnection(true);
-      } catch (error) {
-        console.error('Error fetching meetings:', error);
-        setMeetings([]);
-        Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
-      }
+    try {
+      const { meetingApiService } = await import('@/services/meetingApiService');
+      const meetings = await meetingApiService.listMeetings();
+      setMeetings(meetings.map((meeting) => ({
+        id: meeting.id,
+        title: meeting.title
+      })));
+      Analytics.trackBackendConnection(true);
+    } catch (error) {
+      console.error('Error fetching meetings:', error);
+      setMeetings([]);
+      Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [serverAddress]);
+  }, []);
 
   useEffect(() => {
     fetchMeetings();
-  }, [serverAddress, fetchMeetings]);
+  }, [fetchMeetings]);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      setServerAddress('http://localhost:5167');
-      setTranscriptServerAddress('http://127.0.0.1:8178/stream');
-    };
-    fetchSettings();
+    // Keep legacy address fields for old components, but meeting data comes from remote API config.
+    setServerAddress('remote-api');
+    setTranscriptServerAddress('');
   }, []);
 
   const baseItems: SidebarItem[] = [
@@ -163,7 +159,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     // The actual recording start/stop is handled in the Home component
   };
 
-  // Function to search through meeting transcripts
+  // Global transcript search via GET /transcripts/search
   const searchTranscripts = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -173,9 +169,42 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsSearching(true);
 
+      const response = await invoke('search_transcripts', {
+        query,
+        limit: 50,
+        offset: 0,
+      }) as {
+        success: boolean;
+        data?: {
+          meetings?: Array<{
+            id: string;
+            title: string;
+            matched_segments?: Array<{
+              text: string;
+              timestamp?: string;
+              start?: number;
+            }>;
+          }>;
+        };
+        error?: string;
+      };
 
-      const results = await invoke('api_search_transcripts', { query }) as TranscriptSearchResult[];
-      setSearchResults(results);
+      if (!response.success || !response.data?.meetings?.length) {
+        setSearchResults([]);
+        return;
+      }
+
+      setSearchResults(
+        response.data.meetings.map((meeting) => {
+          const first = meeting.matched_segments?.[0];
+          return {
+            id: meeting.id,
+            title: meeting.title,
+            matchContext: first?.text ?? '',
+            timestamp: first?.timestamp ?? (first?.start != null ? String(first.start) : ''),
+          };
+        })
+      );
     } catch (error) {
       console.error('Error searching transcripts:', error);
       setSearchResults([]);
@@ -287,6 +316,52 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     };
   }, [activeSummaryPolls]);
 
+  // Listen for upload and job progress events (Phase 2)
+  useEffect(() => {
+    let unlistenUploadStarted: (() => void) | undefined;
+    let unlistenUploadSuccess: (() => void) | undefined;
+    let unlistenUploadFailed: (() => void) | undefined;
+    let unlistenJobProgress: (() => void) | undefined;
+    let unlistenJobCompleted: (() => void) | undefined;
+
+    const setupListeners = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+
+      unlistenUploadStarted = await listen('upload-started', (event: any) => {
+        console.log('📤 Upload started:', event.payload);
+      });
+
+      unlistenUploadSuccess = await listen('upload-success', (event: any) => {
+        console.log('✅ Upload success:', event.payload);
+        // Refetch meetings to show the new meeting from API
+        fetchMeetings();
+      });
+
+      unlistenUploadFailed = await listen('upload-failed', (event: any) => {
+        console.warn('❌ Upload failed:', event.payload);
+      });
+
+      unlistenJobProgress = await listen('job-progress', (event: any) => {
+        console.log('⏳ Job progress:', event.payload);
+      });
+
+      unlistenJobCompleted = await listen('job-completed', (event: any) => {
+        console.log('🎉 Job completed:', event.payload);
+        // Refetch meetings to get updated transcript/summary status
+        fetchMeetings();
+      });
+    };
+
+    setupListeners();
+
+    return () => {
+      unlistenUploadStarted?.();
+      unlistenUploadSuccess?.();
+      unlistenUploadFailed?.();
+      unlistenJobProgress?.();
+      unlistenJobCompleted?.();
+    };
+  }, [fetchMeetings]);
 
 
   return (

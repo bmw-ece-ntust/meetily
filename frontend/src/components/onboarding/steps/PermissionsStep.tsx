@@ -5,8 +5,13 @@ import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { PermissionRow } from '../shared';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { toast } from 'sonner';
 
-export function PermissionsStep() {
+interface PermissionsStepProps {
+  onComplete?: () => void;
+}
+
+export function PermissionsStep({ onComplete }: PermissionsStepProps) {
   const { setPermissionStatus, setPermissionsSkipped, permissions, completeOnboarding } = useOnboarding();
   const [isPending, setIsPending] = useState(false);
 
@@ -95,10 +100,30 @@ export function PermissionsStep() {
 
   const handleFinish = async () => {
     try {
+      console.log('[PermissionsStep] handleFinish called');
       await completeOnboarding();
+      console.log('[PermissionsStep] completeOnboarding succeeded');
+      onComplete?.(); // Call parent callback
       window.location.reload();
     } catch (error) {
-      console.error('Failed to complete onboarding:', error);
+      console.error('[PermissionsStep] Failed to complete onboarding:', error);
+      
+      // Show user-friendly error message
+      if (error instanceof Error) {
+        if (error.message === 'API URL is required') {
+          toast.error('Setup incomplete', {
+            description: 'API URL is missing. Please go back to Step 2 and enter your API URL.'
+          });
+        } else {
+          toast.error('Failed to complete setup', {
+            description: error.message || 'Please try again or check the console for details.'
+          });
+        }
+      } else {
+        toast.error('Failed to complete setup', {
+          description: 'An unknown error occurred. Please check the console.'
+        });
+      }
     }
   };
 
@@ -115,7 +140,7 @@ export function PermissionsStep() {
     <OnboardingContainer
       title="Grant Permissions"
       description="Meetily needs access to your microphone and system audio to record meetings"
-      step={4}
+      step={3}
       hideProgress={true}
       showNavigation={allPermissionsGranted}
       canGoNext={allPermissionsGranted}

@@ -11,8 +11,8 @@ interface UseModelConfigurationProps {
 export function useModelConfiguration({ serverAddress }: UseModelConfigurationProps) {
   // Note: No hardcoded defaults - DB is the source of truth
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
-    provider: 'ollama',
-    model: '', // Empty until loaded from DB
+    provider: 'openai',
+    model: 'gpt-4o-2024-11-20',
     whisperModel: 'large-v3'
   });
   const [isLoading, setIsLoading] = useState(true);
