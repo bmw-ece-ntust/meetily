@@ -561,6 +561,15 @@ pub fn run() {
             // Database and Models path commands
             database::commands::get_database_directory,
             database::commands::open_database_folder,
+            database::commands::api_get_model_config,
+            database::commands::api_save_model_config,
+            database::commands::api_get_api_key,
+            database::commands::api_get_transcript_config,
+            database::commands::api_save_transcript_config,
+            database::commands::api_get_custom_openai_config,
+            database::commands::api_save_custom_openai_config,
+            database::commands::api_get_auto_generate_setting,
+            database::commands::api_test_custom_openai_connection,
             // Onboarding commands
             onboarding::get_onboarding_status,
             onboarding::save_onboarding_status_cmd,
@@ -581,7 +590,9 @@ pub fn run() {
             api_client::commands::test_api_connection,
             api_client::commands::list_meetings,
             api_client::commands::get_meeting,
+            api_client::commands::update_meeting,
             api_client::commands::delete_meeting,
+            api_client::commands::retranscribe_meeting,
             api_client::commands::get_transcript,
             api_client::commands::search_transcript,
             api_client::commands::list_summaries,
@@ -595,6 +606,12 @@ pub fn run() {
             api_client::commands::is_upload_worker_running,
             api_client::commands::clear_cache,
             api_client::commands::get_cache_stats,
+            // Summary commands
+            summary::commands::api_save_meeting_summary,
+            summary::commands::api_detect_transcript_summary_language,
+            summary::commands::api_get_summary,
+            summary::commands::api_process_transcript,
+            summary::commands::api_cancel_summary,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

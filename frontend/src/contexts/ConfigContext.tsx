@@ -99,8 +99,8 @@ const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 export function ConfigProvider({ children }: { children: ReactNode }) {
   // Model configuration state
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
-    provider: 'ollama',
-    model: 'llama3.2:latest',
+    provider: 'openai',
+    model: 'gpt-4o-2024-11-20',
     whisperModel: 'large-v3',
     ollamaEndpoint: null
   });
@@ -178,6 +178,12 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   // Load Ollama models (uses saved endpoint, re-runs when endpoint changes after config load)
   useEffect(() => {
     const loadModels = async () => {
+      if (modelConfig.provider !== 'ollama') {
+        setModels([]);
+        setError('');
+        return;
+      }
+
       try {
         const endpoint = modelConfig.ollamaEndpoint || null;
         const modelList = await invoke<OllamaModel[]>('get_ollama_models', { endpoint });
@@ -189,7 +195,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       }
     };
     loadModels();
-  }, [modelConfig.ollamaEndpoint]);
+  }, [modelConfig.provider, modelConfig.ollamaEndpoint]);
 
   // Load transcript configuration on mount
   useEffect(() => {

@@ -52,7 +52,7 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
     setApiUrl(localUrl);
     setApiKey(localKey);
 
-    await testApiConnection();
+    await testApiConnection(localUrl, localKey);
   };
 
   const handleContinue = async () => {
@@ -72,7 +72,7 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
       // Non-macOS: Complete onboarding immediately
       setIsCompleting(true);
       try {
-        await completeOnboarding();
+        await completeOnboarding(localUrl, localKey);
         onComplete?.(); // Call parent callback
 
         // Small delay to ensure state is saved

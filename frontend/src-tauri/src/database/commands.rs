@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::manager::DatabaseManager;
-use crate::state::AppState;
+use crate::database::repositories::setting::SettingsRepository;
+use crate::summary::CustomOpenAIConfig;
 
 #[derive(Serialize)]
 pub struct DatabaseCheckResult {
@@ -167,13 +168,19 @@ pub async fn import_and_initialize_database(
             .map_err(|e| format!("Failed to initialize API client: {}", e))?;
 
     // Update app state with the new manager and API client
-    app.manage(crate::state::AppState {
+    let app_state = crate::state::AppState {
         db_manager,
         api_client,
         memory_cache,
         upload_queue,
         upload_worker,
-    });
+    };
+    app.manage(app_state.clone());
+    app.manage(app_state.api_client.clone());
+    app.manage(app_state.db_manager.pool().clone());
+    app.manage(app_state.memory_cache.clone());
+    app.manage(app_state.upload_queue.clone());
+    app.manage(app_state.upload_worker.clone());
 
     info!("Legacy database imported and initialized successfully");
 
@@ -203,13 +210,19 @@ pub async fn initialize_fresh_database(app: AppHandle) -> Result<(), String> {
             .map_err(|e| format!("Failed to initialize API client: {}", e))?;
 
     // Update app state with the new manager and API client
-    app.manage(crate::state::AppState {
+    let app_state = crate::state::AppState {
         db_manager: db_manager.clone(),
         api_client,
         memory_cache,
         upload_queue,
         upload_worker,
-    });
+    };
+    app.manage(app_state.clone());
+    app.manage(app_state.api_client.clone());
+    app.manage(app_state.db_manager.pool().clone());
+    app.manage(app_state.memory_cache.clone());
+    app.manage(app_state.upload_queue.clone());
+    app.manage(app_state.upload_worker.clone());
 
     // Set default model configuration for fresh installs
     let pool = db_manager.pool();
@@ -285,4 +298,133 @@ pub async fn open_database_folder(app: AppHandle) -> Result<(), String> {
 
     info!("Opened database folder: {}", folder_path);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn api_get_model_config(pool: tauri::State<'_, sqlx::SqlitePool>) -> Result<serde_json::Value, String> {
+    let setting = SettingsRepository::get_model_config(&pool)
+        .await
+        .map_err(|e| format!("Failed to load model config: {}", e))?;
+
+    Ok(match setting {
+        Some(setting) => serde_json::to_value(setting).map_err(|e| e.to_string())?,
+        None => serde_json::json!({
+            "provider": "openai",
+            "model": "gpt-4o-2024-11-20",
+            "whisperModel": crate::config::DEFAULT_TRANSCRIPTION_MODEL,
+            "apiKey": null,
+            "ollamaEndpoint": null
+        }),
+    })
+}
+
+#[tauri::command]
+pub async fn api_save_model_config(
+    pool: tauri::State<'_, sqlx::SqlitePool>,
+    provider: String,
+    model: String,
+    whisper_model: String,
+    api_key: Option<String>,
+    ollama_endpoint: Option<String>,
+) -> Result<(), String> {
+    SettingsRepository::save_model_config(
+        &pool,
+        &provider,
+        &model,
+        &whisper_model,
+        ollama_endpoint.as_deref(),
+    )
+    .await
+    .map_err(|e| format!("Failed to save model config: {}", e))?;
+
+    if let Some(api_key) = api_key.filter(|key| !key.is_empty()) {
+        SettingsRepository::save_api_key(&pool, &provider, &api_key)
+            .await
+            .map_err(|e| format!("Failed to save API key: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn api_get_api_key(
+    pool: tauri::State<'_, sqlx::SqlitePool>,
+    provider: String,
+) -> Result<Option<String>, String> {
+    SettingsRepository::get_api_key(&pool, &provider)
+        .await
+        .map_err(|e| format!("Failed to load API key: {}", e))
+}
+
+#[tauri::command]
+pub async fn api_get_transcript_config(pool: tauri::State<'_, sqlx::SqlitePool>) -> Result<serde_json::Value, String> {
+    let setting = SettingsRepository::get_transcript_config(&pool)
+        .await
+        .map_err(|e| format!("Failed to load transcript config: {}", e))?;
+
+    Ok(match setting {
+        Some(setting) => serde_json::to_value(setting).map_err(|e| e.to_string())?,
+        None => serde_json::json!({
+            "provider": crate::config::DEFAULT_TRANSCRIPTION_PROVIDER,
+            "model": crate::config::DEFAULT_TRANSCRIPTION_MODEL,
+            "apiKey": null
+        }),
+    })
+}
+
+#[tauri::command]
+pub async fn api_save_transcript_config(
+    pool: tauri::State<'_, sqlx::SqlitePool>,
+    provider: String,
+    model: String,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    SettingsRepository::save_transcript_config(&pool, &provider, &model)
+        .await
+        .map_err(|e| format!("Failed to save transcript config: {}", e))?;
+
+    if let Some(api_key) = api_key.filter(|key| !key.is_empty()) {
+        SettingsRepository::save_transcript_api_key(&pool, &provider, &api_key)
+            .await
+            .map_err(|e| format!("Failed to save transcript API key: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn api_get_custom_openai_config(
+    pool: tauri::State<'_, sqlx::SqlitePool>,
+) -> Result<Option<CustomOpenAIConfig>, String> {
+    SettingsRepository::get_custom_openai_config(&pool)
+        .await
+        .map_err(|e| format!("Failed to load custom OpenAI config: {}", e))
+}
+
+#[tauri::command]
+pub async fn api_save_custom_openai_config(
+    pool: tauri::State<'_, sqlx::SqlitePool>,
+    endpoint: String,
+    api_key: Option<String>,
+    model: String,
+    max_tokens: Option<i32>,
+    temperature: Option<f32>,
+    top_p: Option<f32>,
+) -> Result<serde_json::Value, String> {
+    let config = CustomOpenAIConfig { endpoint, api_key, model, max_tokens, temperature, top_p };
+    SettingsRepository::save_custom_openai_config(&pool, &config)
+        .await
+        .map_err(|e| format!("Failed to save custom OpenAI config: {}", e))?;
+
+    Ok(serde_json::json!({ "status": "success", "message": "Custom OpenAI config saved" }))
+}
+
+#[tauri::command]
+pub async fn api_get_auto_generate_setting() -> Result<bool, String> {
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn api_test_custom_openai_connection() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({ "status": "success", "message": "Connection test delegated to API server" }))
 }

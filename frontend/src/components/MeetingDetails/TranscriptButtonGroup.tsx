@@ -3,39 +3,60 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, FolderOpen, RefreshCw } from 'lucide-react';
+import { Copy, RefreshCw, Loader2 } from 'lucide-react';
 import Analytics from '@/lib/analytics';
-import { RetranscribeDialog } from './RetranscribeDialog';
-import { useConfig } from '@/contexts/ConfigContext';
-
+import { toast } from 'sonner';
+import { meetingApiService } from '@/services/meetingApiService';
 
 interface TranscriptButtonGroupProps {
   transcriptCount: number;
   onCopyTranscript: () => void;
-  onOpenMeetingFolder: () => Promise<void>;
   meetingId?: string;
-  meetingFolderPath?: string | null;
   onRefetchTranscripts?: () => Promise<void>;
 }
-
 
 export function TranscriptButtonGroup({
   transcriptCount,
   onCopyTranscript,
-  onOpenMeetingFolder,
   meetingId,
-  meetingFolderPath,
   onRefetchTranscripts,
 }: TranscriptButtonGroupProps) {
-  const { betaFeatures } = useConfig();
-  const [showRetranscribeDialog, setShowRetranscribeDialog] = useState(false);
+  const [isRetranscribing, setIsRetranscribing] = useState(false);
 
-  const handleRetranscribeComplete = useCallback(async () => {
-    // Refetch transcripts to show the updated data
-    if (onRefetchTranscripts) {
-      await onRefetchTranscripts();
+  const handleRetranscribe = useCallback(async () => {
+    if (!meetingId || isRetranscribing) return;
+
+    setIsRetranscribing(true);
+    Analytics.trackButtonClick('enhance_transcript', 'meeting_details');
+
+    try {
+      const { job_id } = await meetingApiService.retranscribeMeeting(meetingId);
+      toast.info('Retranscription started', {
+        description: `Job ${job_id}`,
+      });
+
+      // Poll job until complete, then refresh transcripts
+      for (let i = 0; i < 200; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const status = await meetingApiService.getJobStatus(job_id);
+        const state = status.state?.toLowerCase();
+        if (state === 'completed') {
+          toast.success('Retranscription complete');
+          await onRefetchTranscripts?.();
+          return;
+        }
+        if (state === 'failed' || state === 'cancelled') {
+          throw new Error(status.error || `Retranscription ${state}`);
+        }
+      }
+      throw new Error('Retranscription timed out');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error('Retranscription failed', { description: message });
+    } finally {
+      setIsRetranscribing(false);
     }
-  }, [onRefetchTranscripts]);
+  }, [meetingId, isRetranscribing, onRefetchTranscripts]);
 
   return (
     <div className="flex items-center justify-center w-full gap-2">
@@ -54,46 +75,26 @@ export function TranscriptButtonGroup({
           <span className="hidden lg:inline">Copy</span>
         </Button>
 
-        <Button
-          size="sm"
-          variant="outline"
-          className="xl:px-4"
-          onClick={() => {
-            Analytics.trackButtonClick('open_recording_folder', 'meeting_details');
-            onOpenMeetingFolder();
-          }}
-          title="Open Recording Folder"
-        >
-          <FolderOpen className="xl:mr-2" size={18} />
-          <span className="hidden lg:inline">Recording</span>
-        </Button>
-
-        {betaFeatures.importAndRetranscribe && meetingId && (
+        {meetingId && (
           <Button
             size="sm"
             variant="outline"
             className="bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 border-blue-200 xl:px-4"
-            onClick={() => {
-              Analytics.trackButtonClick('enhance_transcript', 'meeting_details');
-              setShowRetranscribeDialog(true);
-            }}
-            title="Retranscribe to enhance your recorded audio"
+            onClick={() => { void handleRetranscribe(); }}
+            disabled={isRetranscribing}
+            title="Retranscribe audio"
           >
-            <RefreshCw className="xl:mr-2" size={18} />
-            <span className="hidden lg:inline">Enhance</span>
+            {isRetranscribing ? (
+              <Loader2 className="xl:mr-2 animate-spin" size={18} />
+            ) : (
+              <RefreshCw className="xl:mr-2" size={18} />
+            )}
+            <span className="hidden lg:inline">
+              {isRetranscribing ? 'Retranscribing...' : 'Enhance'}
+            </span>
           </Button>
         )}
       </ButtonGroup>
-
-      {betaFeatures.importAndRetranscribe && meetingId && (
-        <RetranscribeDialog
-          open={showRetranscribeDialog}
-          onOpenChange={setShowRetranscribeDialog}
-          meetingId={meetingId}
-          meetingFolderPath={meetingFolderPath}
-          onComplete={handleRetranscribeComplete}
-        />
-      )}
     </div>
   );
 }

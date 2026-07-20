@@ -187,6 +187,16 @@ pub async fn complete_onboarding<R: Runtime>(
     }
     info!("Saved API configuration: url={}", api_url);
 
+    // Keep the in-memory API client in sync so meeting commands use the saved server immediately.
+    let mut client = state.api_client.write().await;
+    client
+        .update_config(crate::api_client::config::ApiConfig::new(
+            api_url.clone(),
+            api_key.clone(),
+        ))
+        .map_err(|e| format!("Failed to update API client: {}", e))?;
+    drop(client);
+
     // Save transcription model config for ai-meeting-agent
     if let Err(e) = SettingsRepository::save_transcript_config(
         pool,

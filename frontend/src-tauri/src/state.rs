@@ -5,6 +5,7 @@ use crate::database::manager::DatabaseManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[derive(Clone)]
 pub struct AppState {
     pub db_manager: DatabaseManager,
     pub api_client: Arc<RwLock<ApiClient>>,

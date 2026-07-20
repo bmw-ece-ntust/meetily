@@ -326,8 +326,8 @@ const Sidebar: React.FC = () => {
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('api_delete_meeting', {
-        meetingId: itemId,
+      await invoke('delete_meeting', {
+        id: itemId,
       });
       console.log('Meeting deleted successfully');
       const updatedMeetings = meetings.filter((m: CurrentMeeting) => m.id !== itemId);
@@ -384,8 +384,8 @@ const Sidebar: React.FC = () => {
     }
 
     try {
-      await invoke('api_save_meeting_title', {
-        meetingId: meetingId,
+      await invoke('update_meeting', {
+        id: meetingId,
         title: newTitle,
       });
 

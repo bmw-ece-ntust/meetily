@@ -84,33 +84,29 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   // Extract fetchMeetings as a reusable function
   const fetchMeetings = React.useCallback(async () => {
-    if (serverAddress) {
-      try {
-        const meetings = await invoke('api_get_meetings') as Array<{ id: string, title: string }>;
-        const transformedMeetings = meetings.map((meeting: any) => ({
-          id: meeting.id,
-          title: meeting.title
-        }));
-        setMeetings(transformedMeetings);
-        Analytics.trackBackendConnection(true);
-      } catch (error) {
-        console.error('Error fetching meetings:', error);
-        setMeetings([]);
-        Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
-      }
+    try {
+      const { meetingApiService } = await import('@/services/meetingApiService');
+      const meetings = await meetingApiService.listMeetings();
+      setMeetings(meetings.map((meeting) => ({
+        id: meeting.id,
+        title: meeting.title
+      })));
+      Analytics.trackBackendConnection(true);
+    } catch (error) {
+      console.error('Error fetching meetings:', error);
+      setMeetings([]);
+      Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [serverAddress]);
+  }, []);
 
   useEffect(() => {
     fetchMeetings();
-  }, [serverAddress, fetchMeetings]);
+  }, [fetchMeetings]);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      setServerAddress('http://localhost:5167');
-      setTranscriptServerAddress('http://127.0.0.1:8178/stream');
-    };
-    fetchSettings();
+    // Keep legacy address fields for old components, but meeting data comes from remote API config.
+    setServerAddress('remote-api');
+    setTranscriptServerAddress('');
   }, []);
 
   const baseItems: SidebarItem[] = [
@@ -174,8 +170,29 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       setIsSearching(true);
 
 
-      const results = await invoke('api_search_transcripts', { query }) as TranscriptSearchResult[];
-      setSearchResults(results);
+      const meetingResults = await Promise.all(meetings.map(async (meeting) => {
+        const response = await invoke('search_transcript', {
+          meetingId: meeting.id,
+          query,
+          limit: 3,
+          offset: 0,
+        }) as {
+          success: boolean;
+          data?: { results?: Array<{ text: string; start: number }> };
+          error?: string;
+        };
+
+        if (!response.success || !response.data?.results?.length) return [];
+
+        return response.data.results.map((result) => ({
+          id: meeting.id,
+          title: meeting.title,
+          matchContext: result.text,
+          timestamp: String(result.start),
+        }));
+      }));
+
+      setSearchResults(meetingResults.flat());
     } catch (error) {
       console.error('Error searching transcripts:', error);
       setSearchResults([]);

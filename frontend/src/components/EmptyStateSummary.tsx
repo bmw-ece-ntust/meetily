@@ -37,7 +37,7 @@ export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false }
           <TooltipTrigger asChild>
             <div>
               <Button
-                onClick={onGenerate}
+                onClick={() => { void onGenerate(); }}
                 disabled={!hasModel || isGenerating}
                 className="gap-2"
               >

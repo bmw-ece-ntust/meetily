@@ -25,13 +25,23 @@ pub async fn initialize_database_on_startup(app: &AppHandle) -> Result<(), Strin
             .await
             .map_err(|e| format!("Failed to initialize API client: {}", e))?;
 
-    app.manage(AppState {
+    let app_state = AppState {
         db_manager,
         api_client,
         memory_cache,
         upload_queue,
         upload_worker,
-    });
+    };
+
+    // Manage AppState
+    app.manage(app_state.clone());
+
+    // Also manage individual components for commands that expect them directly
+    app.manage(app_state.api_client.clone());
+    app.manage(app_state.db_manager.pool().clone());
+    app.manage(app_state.memory_cache.clone());
+    app.manage(app_state.upload_queue.clone());
+    app.manage(app_state.upload_worker.clone());
 
     if is_first_launch {
         info!("First launch detected - database initialized with defaults, emitting event");

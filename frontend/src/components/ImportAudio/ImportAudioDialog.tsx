@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload,
-  Globe,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -9,8 +8,6 @@ import {
   FileAudio,
   Clock,
   HardDrive,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import {
   Dialog,
@@ -22,19 +19,10 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
 import { toast } from 'sonner';
-import { useConfig } from '@/contexts/ConfigContext';
 import { useImportAudio, ImportResult } from '@/hooks/useImportAudio';
 import { useRouter } from 'next/navigation';
 import { useSidebar } from '../Sidebar/SidebarProvider';
-import { LANGUAGES } from '@/constants/languages';
 
 
 interface ImportAudioDialogProps {
@@ -70,11 +58,8 @@ export function ImportAudioDialog({
 }: ImportAudioDialogProps) {
   const router = useRouter();
   const { refetchMeetings } = useSidebar();
-  const { selectedLanguage } = useConfig();
 
   const [title, setTitle] = useState('');
-  const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
 
   // Always start as false — represents "dialog has not yet been opened".
@@ -124,8 +109,6 @@ export function ImportAudioDialog({
       reset();
       setTitle('');
       setTitleModifiedByUser(false);
-      setSelectedLang(selectedLanguage || 'auto');
-      setShowAdvanced(false);
 
       // Validate preselected file if provided
       if (preselectedFile) {
@@ -137,7 +120,7 @@ export function ImportAudioDialog({
       }
 
     }
-  }, [open, preselectedFile, selectedLanguage, reset, validateFile]);
+  }, [open, preselectedFile, reset, validateFile]);
 
   // Update title when fileInfo changes
   useEffect(() => {
@@ -159,7 +142,7 @@ export function ImportAudioDialog({
     await startImport(
       fileInfo.path,
       title || fileInfo.filename,
-      selectedLang === 'auto' ? null : selectedLang,
+      null,
       null,
       null
     );
@@ -294,45 +277,6 @@ export function ImportAudioDialog({
                 </div>
               )}
 
-              {/* Advanced options (collapsible) */}
-              {fileInfo && (
-                <div className="border rounded-lg">
-                  <button
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="w-full flex items-center justify-between p-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    <span>Advanced Options</span>
-                    {showAdvanced ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
-
-                  {showAdvanced && (
-                    <div className="p-3 pt-0 space-y-4 border-t">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">Language</span>
-                        </div>
-                        <Select value={selectedLang} onValueChange={setSelectedLang}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select language" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-60">
-                            {LANGUAGES.map((lang) => (
-                              <SelectItem key={lang.code} value={lang.code}>
-                                {lang.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </>
           )}
 

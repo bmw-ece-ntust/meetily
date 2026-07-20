@@ -245,7 +245,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
               console.log('📝 Editor blocks changed:', blocks.length);
               handleEditorChange(blocks);
             }}
-            editable={true}
+            editable={false}
           />
         </div>
       </div>
@@ -260,7 +260,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
         <div className="w-full">
           <BlockNoteView
             editor={editor}
-            editable={true}
+            editable={false}
             onChange={() => {
               if (isContentLoaded.current) {
                 handleEditorChange(editor.document);

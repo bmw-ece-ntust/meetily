@@ -12,6 +12,7 @@ interface OnboardingStatus {
   api_config: {
     configured: boolean;
     api_url?: string;
+    api_key?: string;
   };
   last_updated: string;
 }
@@ -36,8 +37,8 @@ interface OnboardingContextType {
   setDatabaseExists: (value: boolean) => void;
   setPermissionStatus: (permission: keyof OnboardingPermissions, status: PermissionStatus) => void;
   setPermissionsSkipped: (skipped: boolean) => void;
-  testApiConnection: () => Promise<boolean>;
-  completeOnboarding: () => Promise<void>;
+  testApiConnection: (url?: string, key?: string) => Promise<boolean>;
+  completeOnboarding: (url?: string, key?: string) => Promise<void>;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -143,7 +144,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [currentStep, completed]);
+  }, [currentStep, completed, apiUrl, apiKey]);
 
   const checkDatabaseStatus = async () => {
     try {
@@ -173,6 +174,17 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         setCurrentStep(status.current_step);
         setCompleted(status.completed);
 
+        // Restore API URL and API Key from saved status
+        if (status.api_config.api_url) {
+          setApiUrl(status.api_config.api_url);
+          console.log('[OnboardingContext] Restored API URL:', status.api_config.api_url);
+        }
+        
+        if (status.api_config.api_key) {
+          setApiKey(status.api_config.api_key);
+          console.log('[OnboardingContext] Restored API Key: ***');
+        }
+
         console.log('[OnboardingContext] Restored status:', status);
       } else {
         console.log('[OnboardingContext] No saved status, starting fresh');
@@ -197,6 +209,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
           api_config: {
             configured: !!apiUrl,
             api_url: apiUrl || undefined,
+            api_key: apiKey || undefined,
           },
           last_updated: new Date().toISOString(),
         },
@@ -206,8 +219,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
-  const testApiConnection = async (): Promise<boolean> => {
-    if (!apiUrl) {
+  const testApiConnection = async (url?: string, key?: string): Promise<boolean> => {
+    const targetUrl = (url ?? apiUrl).trim();
+    const targetKey = key ?? apiKey;
+
+    if (!targetUrl) {
       toast.error('Please enter an API URL');
       return false;
     }
@@ -216,15 +232,29 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     setConnectionTestResult('testing');
 
     try {
-      const result = await invoke<boolean>('test_api_connection', { apiUrl });
+      const configResult = await invoke<{ success: boolean; error?: string }>('set_api_config', {
+        baseUrl: targetUrl,
+        apiKey: targetKey || null,
+      });
 
-      if (result) {
+      if (!configResult.success) {
+        throw new Error(configResult.error || 'Failed to save API config');
+      }
+
+      setApiUrl(targetUrl);
+      setApiKey(targetKey);
+
+      const result = await invoke<{ success: boolean; data?: boolean; error?: string }>('test_api_connection');
+
+      if (result.success && result.data) {
         setConnectionTestResult('success');
         toast.success('API connection successful!');
         return true;
       } else {
         setConnectionTestResult('error');
-        toast.error('API connection failed');
+        toast.error('API connection failed', {
+          description: result.error || 'Check your URL and try again.',
+        });
         return false;
       }
     } catch (error) {
@@ -239,28 +269,44 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
-  const completeOnboarding = async () => {
+  const completeOnboarding = async (url?: string, key?: string) => {
     try {
       isCompletingRef.current = true;
+      const targetUrl = (url ?? apiUrl).trim();
+      const targetKey = key ?? apiKey;
 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = undefined;
       }
 
+      // Debug: Log current state before validation
+      console.log('[OnboardingContext] completeOnboarding called with:', {
+        apiUrl,
+        targetUrl,
+        hasApiKey: !!apiKey,
+        currentStep,
+        permissionsSkipped
+      });
+
       // Validate API URL is not empty
-      if (!apiUrl) {
+      if (!targetUrl) {
+        console.error('[OnboardingContext] API URL is empty!');
         throw new Error('API URL is required');
       }
 
       // Call backend to save config and mark complete
+      console.log('[OnboardingContext] Calling complete_onboarding with:', targetUrl);
       await invoke('complete_onboarding', {
-        apiUrl: apiUrl,
-        apiKey: apiKey || null,
+        apiUrl: targetUrl,
+        apiKey: targetKey || null,
       });
 
+      setApiUrl(targetUrl);
+      setApiKey(targetKey);
+
       setCompleted(true);
-      console.log('[OnboardingContext] Onboarding completed with API:', apiUrl);
+      console.log('[OnboardingContext] Onboarding completed successfully with API:', targetUrl);
 
       isCompletingRef.current = false;
     } catch (error) {

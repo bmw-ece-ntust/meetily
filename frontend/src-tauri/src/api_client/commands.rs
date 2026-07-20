@@ -145,6 +145,31 @@ pub async fn get_meeting(
 }
 
 #[tauri::command]
+pub async fn update_meeting(
+    id: String,
+    title: Option<String>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+    cache: State<'_, Arc<MemoryCache>>,
+) -> Result<CommandResult<Meeting>, String> {
+    use crate::api_client::types::UpdateMeetingRequest;
+    
+    let request = UpdateMeetingRequest {
+        title,
+        date: None,
+    };
+    
+    let client = client.read().await;
+    match client.update_meeting(&id, request).await {
+        Ok(meeting) => {
+            // Update cache
+            cache.set_meeting(meeting.clone()).await;
+            Ok(CommandResult::success(meeting))
+        }
+        Err(e) => Ok(CommandResult::error(format!("Failed to update meeting: {}", e))),
+    }
+}
+
+#[tauri::command]
 pub async fn delete_meeting(
     id: String,
     client: State<'_, Arc<RwLock<ApiClient>>>,
@@ -158,6 +183,25 @@ pub async fn delete_meeting(
             Ok(CommandResult::success(true))
         }
         Err(e) => Ok(CommandResult::error(format!("Failed to delete meeting: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn retranscribe_meeting(
+    id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+    cache: State<'_, Arc<MemoryCache>>,
+) -> Result<CommandResult<ImportResponse>, String> {
+    let client = client.read().await;
+    match client.retranscribe_meeting(&id).await {
+        Ok(response) => {
+            cache.remove_meeting(&id).await;
+            Ok(CommandResult::success(response))
+        }
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to retranscribe meeting: {}",
+            e
+        ))),
     }
 }
 
