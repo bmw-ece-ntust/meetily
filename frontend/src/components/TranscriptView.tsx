@@ -302,6 +302,11 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                   )}
                 </TooltipContent>
               </Tooltip>
+              {transcript.speaker?.trim() && (
+                <span className="text-xs font-medium text-gray-500 mt-1 flex-shrink-0">
+                  {transcript.speaker.trim()}
+                </span>
+              )}
               <div className="flex-1">
                 {isStreaming ? (
                   // Streaming transcript - show in bubble (full width)

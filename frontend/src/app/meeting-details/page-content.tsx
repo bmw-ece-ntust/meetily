@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Summary } from '@/types';
 import Analytics from '@/lib/analytics';
@@ -8,6 +8,19 @@ import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
 import { useMeetingData } from '@/hooks/meeting-details/useMeetingData';
 import { useSummaryGeneration } from '@/hooks/meeting-details/useSummaryGeneration';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
+
+const WIDTH_STORAGE_KEY = 'meetily.transcriptPanelWidth';
+const DEFAULT_WIDTH_PCT = 33;
+const MIN_WIDTH_PCT = 20;
+const MAX_WIDTH_PCT = 60;
+
+function loadStoredWidth(): number {
+  if (typeof window === 'undefined') return DEFAULT_WIDTH_PCT;
+  const raw = localStorage.getItem(WIDTH_STORAGE_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) return DEFAULT_WIDTH_PCT;
+  return Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, parsed));
+}
 
 export default function PageContent({
   meeting,
@@ -25,6 +38,9 @@ export default function PageContent({
   onRefetchTranscripts?: () => Promise<void>;
 }) {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('full');
+  const [transcriptWidthPct, setTranscriptWidthPct] = useState(DEFAULT_WIDTH_PCT);
+  const isDragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const availableTemplates = [
     { id: 'key_points', name: 'Key Points', description: 'Extract main points from the meeting' },
@@ -52,6 +68,10 @@ export default function PageContent({
   });
 
   useEffect(() => {
+    setTranscriptWidthPct(loadStoredWidth());
+  }, []);
+
+  useEffect(() => {
     Analytics.trackPageView('meeting_details');
   }, []);
 
@@ -67,6 +87,37 @@ export default function PageContent({
     return () => { cancelled = true; };
   }, [shouldAutoGenerate, meeting.id]);
 
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, pct));
+      setTranscriptWidthPct(clamped);
+    };
+
+    const onUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setTranscriptWidthPct((current) => {
+        localStorage.setItem(WIDTH_STORAGE_KEY, String(current));
+        return current;
+      });
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -74,7 +125,7 @@ export default function PageContent({
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="flex flex-col h-screen bg-gray-50"
     >
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={containerRef} className="flex flex-1 overflow-hidden">
         <TranscriptPanel
           transcripts={meetingData.transcripts}
           onCopyTranscript={copyOperations.handleCopyTranscript}
@@ -82,6 +133,15 @@ export default function PageContent({
           disableAutoScroll={true}
           meetingId={meeting.id}
           onRefetchTranscripts={onRefetchTranscripts}
+          className="hidden md:flex min-w-0 min-h-0 bg-white flex-col relative shrink-0"
+          style={{ width: `${transcriptWidthPct}%` }}
+        />
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize transcript panel"
+          onMouseDown={handleResizeStart}
+          className="hidden md:flex w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-blue-400 active:bg-blue-500 transition-colors"
         />
         <SummaryPanel
           meeting={meeting}

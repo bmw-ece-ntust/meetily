@@ -49,6 +49,7 @@ function transcriptFromSegments(segments: TranscriptSegment[] = []): Transcript[
     audio_start_time: segment.start,
     audio_end_time: segment.end,
     duration: segment.end - segment.start,
+    speaker: segment.speaker,
   }));
 }
 

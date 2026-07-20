@@ -31,7 +31,7 @@ export function useCopyOperations({
         meetingId,
         limit: 1,
         offset: 0,
-      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string }> } }; error?: string };
+      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string; speaker?: string }> } }; error?: string };
 
       if (!firstPage.success) {
         throw new Error(firstPage.error || 'Failed to fetch transcripts');
@@ -49,7 +49,7 @@ export function useCopyOperations({
         meetingId,
         limit: totalCount,
         offset: 0,
-      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string }> } }; error?: string };
+      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string; speaker?: string }> } }; error?: string };
 
       if (!allData.success) {
         throw new Error(allData.error || 'Failed to fetch transcripts');
@@ -62,6 +62,7 @@ export function useCopyOperations({
         audio_start_time: segment.start,
         audio_end_time: segment.end,
         duration: segment.end - segment.start,
+        speaker: segment.speaker,
       }));
 
       console.log(`✅ Fetched ${transcripts.length} transcripts from database for copying`);
@@ -103,7 +104,11 @@ export function useCopyOperations({
     const header = `# Transcript of the Meeting: ${meeting.id} - ${meetingTitle ?? meeting.title}\n\n`;
     const date = `## Date: ${new Date(meeting.created_at).toLocaleDateString()}\n\n`;
     const fullTranscript = allTranscripts
-      .map(t => `${formatTime(t.audio_start_time, t.timestamp)} ${t.text}  `)
+      .map(t => {
+        const time = formatTime(t.audio_start_time, t.timestamp);
+        const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
+        return `${time} ${speaker}${t.text}  `;
+      })
       .join('\n');
 
     await navigator.clipboard.writeText(header + date + fullTranscript);

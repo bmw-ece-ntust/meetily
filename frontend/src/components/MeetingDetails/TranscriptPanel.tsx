@@ -3,6 +3,7 @@
 import { Transcript } from '@/types';
 import { TranscriptView } from '@/components/TranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
+import { CSSProperties } from 'react';
 
 interface TranscriptPanelProps {
   transcripts: Transcript[];
@@ -11,6 +12,8 @@ interface TranscriptPanelProps {
   disableAutoScroll?: boolean;
   meetingId?: string;
   onRefetchTranscripts?: () => Promise<void>;
+  style?: CSSProperties;
+  className?: string;
 }
 
 export function TranscriptPanel({
@@ -19,9 +22,14 @@ export function TranscriptPanel({
   isRecording,
   meetingId,
   onRefetchTranscripts,
+  style,
+  className,
 }: TranscriptPanelProps) {
   return (
-    <div className="hidden md:flex md:w-1/4 lg:w-1/3 min-w-0 min-h-0 border-r border-gray-200 bg-white flex-col relative shrink-0">
+    <div
+      className={className ?? 'hidden md:flex min-w-0 min-h-0 border-r border-gray-200 bg-white flex-col relative shrink-0'}
+      style={style}
+    >
       <div className="p-4 border-b border-gray-200">
         <TranscriptButtonGroup
           transcriptCount={transcripts?.length || 0}
