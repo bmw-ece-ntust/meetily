@@ -22,12 +22,10 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
     testApiConnection,
     isTestingConnection,
     connectionTestResult,
-    completeOnboarding,
   } = useOnboarding();
 
   const [localUrl, setLocalUrl] = useState(apiUrl || '');
   const [localKey, setLocalKey] = useState(apiKey || '');
-  const [isCompleting, setIsCompleting] = useState(false);
   const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
@@ -56,7 +54,6 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
   };
 
   const handleContinue = async () => {
-    // Update context
     setApiUrl(localUrl);
     setApiKey(localKey);
 
@@ -65,28 +62,8 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
       return;
     }
 
-    if (isMac) {
-      // macOS: Go to permissions step
-      goNext();
-    } else {
-      // Non-macOS: Complete onboarding immediately
-      setIsCompleting(true);
-      try {
-        await completeOnboarding(localUrl, localKey);
-        onComplete?.(); // Call parent callback
-
-        // Small delay to ensure state is saved
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        window.location.reload();
-      } catch (error) {
-        console.error('Failed to complete onboarding:', error);
-        toast.error('Failed to complete setup', {
-          description: 'Please try again.',
-        });
-        setIsCompleting(false);
-      }
-    }
+    // Always continue to optional GitHub export step
+    goNext();
   };
 
   const handleSkipTest = () => {
@@ -109,7 +86,7 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
       title="Configure API Connection"
       description="Enter your AI processing server details to enable transcription and summarization"
       step={2}
-      totalSteps={isMac ? 3 : 2}
+      totalSteps={isMac ? 4 : 3}
     >
       <div className="flex flex-col items-center space-y-6">
         <div className="w-full max-w-md space-y-6">
@@ -202,19 +179,10 @@ export function ApiConfigurationStep({ onComplete }: ApiConfigurationStepProps) 
         <div className="w-full max-w-md space-y-3">
           <Button
             onClick={handleContinue}
-            disabled={!canContinue || isCompleting}
+            disabled={!canContinue}
             className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isCompleting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Completing Setup...
-              </>
-            ) : isMac ? (
-              'Continue to Permissions'
-            ) : (
-              'Complete Setup'
-            )}
+            Continue
           </Button>
 
           {connectionTestResult !== 'success' && localUrl && (

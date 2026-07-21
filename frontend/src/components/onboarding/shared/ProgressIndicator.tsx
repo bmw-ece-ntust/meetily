@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Lock, Download, CheckCircle2, BrainCircuit } from 'lucide-react';
+import { Check, Lock, Download, CheckCircle2, BrainCircuit, Github } from 'lucide-react';
 
 interface ProgressIndicatorProps {
   current: number;
@@ -9,9 +9,9 @@ interface ProgressIndicatorProps {
 
 const stepIcons = [
   Lock,         // 1. Welcome
-  BrainCircuit, // 2. Setup Overview
-  Download,     // 3. Download Progress
-  // Step 4 (Permissions) doesn't need icon - auto-skipped on non-macOS
+  BrainCircuit, // 2. API Configuration
+  Github,       // 3. GitHub Export
+  Download,     // 4. Permissions (macOS)
 ];
 
 export function ProgressIndicator({ current, total, onStepClick }: ProgressIndicatorProps) {

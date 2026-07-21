@@ -28,6 +28,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod github_export;
 pub mod notifications;
 pub mod onboarding;
 pub mod state;
@@ -584,6 +585,7 @@ pub fn run() {
             api_client::commands::get_transcript,
             api_client::commands::search_transcripts,
             api_client::commands::list_summaries,
+            api_client::commands::get_summary,
             api_client::commands::generate_summary,
             api_client::commands::get_job_status,
             api_client::commands::cancel_job,
@@ -594,6 +596,11 @@ pub fn run() {
             api_client::commands::is_upload_worker_running,
             api_client::commands::clear_cache,
             api_client::commands::get_cache_stats,
+            // GitHub export commands
+            github_export::commands::get_github_export_config,
+            github_export::commands::set_github_export_config,
+            github_export::commands::test_github_export_permissions,
+            github_export::commands::publish_meeting_to_github,
             // Summary commands
             summary::commands::api_save_meeting_summary,
             summary::commands::api_detect_transcript_summary_language,

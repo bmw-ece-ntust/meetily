@@ -21,6 +21,8 @@ interface OnboardingContextType {
   currentStep: number;
   apiUrl: string;
   apiKey: string;
+  githubToken: string;
+  githubRepoUrl: string;
   isTestingConnection: boolean;
   connectionTestResult: 'idle' | 'testing' | 'success' | 'error';
   databaseExists: boolean;
@@ -34,10 +36,13 @@ interface OnboardingContextType {
   // Setters
   setApiUrl: (url: string) => void;
   setApiKey: (key: string) => void;
+  setGithubToken: (token: string) => void;
+  setGithubRepoUrl: (url: string) => void;
   setDatabaseExists: (value: boolean) => void;
   setPermissionStatus: (permission: keyof OnboardingPermissions, status: PermissionStatus) => void;
   setPermissionsSkipped: (skipped: boolean) => void;
   testApiConnection: (url?: string, key?: string) => Promise<boolean>;
+  saveGithubExportConfig: (token?: string, repoUrl?: string) => Promise<void>;
   completeOnboarding: (url?: string, key?: string) => Promise<void>;
 }
 
@@ -48,6 +53,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const [completed, setCompleted] = useState(false);
   const [apiUrl, setApiUrl] = useState<string>('');
   const [apiKey, setApiKey] = useState<string>('');
+  const [githubToken, setGithubToken] = useState<string>('');
+  const [githubRepoUrl, setGithubRepoUrl] = useState<string>('');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [databaseExists, setDatabaseExists] = useState(false);
@@ -269,6 +276,18 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
+  const saveGithubExportConfig = async (token?: string, repoUrl?: string) => {
+    const targetToken = (token ?? githubToken).trim();
+    const targetUrl = (repoUrl ?? githubRepoUrl).trim();
+    const result = await invoke<{ success: boolean; error?: string }>('set_github_export_config', {
+      githubToken: targetToken || null,
+      repoUrl: targetUrl || null,
+    });
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to save GitHub export config');
+    }
+  };
+
   const completeOnboarding = async (url?: string, key?: string) => {
     try {
       isCompletingRef.current = true;
@@ -280,7 +299,6 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         saveTimeoutRef.current = undefined;
       }
 
-      // Debug: Log current state before validation
       console.log('[OnboardingContext] completeOnboarding called with:', {
         apiUrl,
         targetUrl,
@@ -289,18 +307,25 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         permissionsSkipped
       });
 
-      // Validate API URL is not empty
       if (!targetUrl) {
         console.error('[OnboardingContext] API URL is empty!');
         throw new Error('API URL is required');
       }
 
-      // Call backend to save config and mark complete
       console.log('[OnboardingContext] Calling complete_onboarding with:', targetUrl);
       await invoke('complete_onboarding', {
         apiUrl: targetUrl,
         apiKey: targetKey || null,
       });
+
+      // Persist GitHub export if already set during onboarding
+      if (githubToken.trim() && githubRepoUrl.trim()) {
+        try {
+          await saveGithubExportConfig(githubToken, githubRepoUrl);
+        } catch (e) {
+          console.warn('[OnboardingContext] Failed to persist GitHub export config:', e);
+        }
+      }
 
       setApiUrl(targetUrl);
       setApiKey(targetKey);
@@ -324,21 +349,15 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const goToStep = useCallback((step: number) => {
-    setCurrentStep(Math.max(1, Math.min(step, 3))); // Max step 3
+    setCurrentStep(Math.max(1, Math.min(step, 4)));
   }, []);
 
   const goNext = useCallback(() => {
-    setCurrentStep((prev: number) => {
-      const next = prev + 1;
-      return Math.min(next, 3); // Don't go past step 3
-    });
+    setCurrentStep((prev: number) => Math.min(prev + 1, 4));
   }, []);
 
   const goPrevious = useCallback(() => {
-    setCurrentStep((prev: number) => {
-      const previous = prev - 1;
-      return Math.max(previous, 1); // Don't go below step 1
-    });
+    setCurrentStep((prev: number) => Math.max(prev - 1, 1));
   }, []);
 
   return (
@@ -347,6 +366,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         currentStep,
         apiUrl,
         apiKey,
+        githubToken,
+        githubRepoUrl,
         isTestingConnection,
         connectionTestResult,
         databaseExists,
@@ -357,10 +378,13 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         goPrevious,
         setApiUrl,
         setApiKey,
+        setGithubToken,
+        setGithubRepoUrl,
         setDatabaseExists,
         setPermissionStatus,
         setPermissionsSkipped,
         testApiConnection,
+        saveGithubExportConfig,
         completeOnboarding,
       }}
     >

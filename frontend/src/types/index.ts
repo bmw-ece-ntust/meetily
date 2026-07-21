@@ -17,6 +17,7 @@ export interface Transcript {
   audio_end_time?: number;   // Seconds from recording start (e.g., 128.6)
   duration?: number;          // Segment duration in seconds (e.g., 3.3)
   speaker?: string;           // Optional diarization label (e.g., SPEAKER_00)
+  refined_text?: string | null; // LLM-refined segment text when available
 }
 
 export interface TranscriptUpdate {

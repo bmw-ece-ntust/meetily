@@ -8,12 +8,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sparkles, FileText, Check, Square } from 'lucide-react';
+import { Sparkles, FileText, Check, Square, Github, Loader2 } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 
 interface SummaryGeneratorButtonGroupProps {
   onGenerateSummary: () => Promise<void> | void;
   onStopGeneration: () => void;
+  onPublishToGithub?: () => Promise<void> | void;
+  isPublishing?: boolean;
   summaryStatus: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
   availableTemplates: Array<{ id: string, name: string, description: string }>;
   selectedTemplate: string;
@@ -25,6 +27,8 @@ interface SummaryGeneratorButtonGroupProps {
 export function SummaryGeneratorButtonGroup({
   onGenerateSummary,
   onStopGeneration,
+  onPublishToGithub,
+  isPublishing = false,
   summaryStatus,
   availableTemplates,
   selectedTemplate,
@@ -90,6 +94,29 @@ export function SummaryGeneratorButtonGroup({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+      )}
+
+      {hasSummary && onPublishToGithub && !isGenerating && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-gray-300 xl:px-4"
+          disabled={isPublishing}
+          onClick={() => {
+            Analytics.trackButtonClick('publish_to_github', 'meeting_details');
+            void onPublishToGithub();
+          }}
+          title="Publish meeting notes to GitHub"
+        >
+          {isPublishing ? (
+            <Loader2 className="xl:mr-2 animate-spin" size={18} />
+          ) : (
+            <Github className="xl:mr-2" size={18} />
+          )}
+          <span className="hidden lg:inline xl:inline">
+            {isPublishing ? 'Publishing...' : 'Publish to GitHub'}
+          </span>
+        </Button>
       )}
     </ButtonGroup>
   );

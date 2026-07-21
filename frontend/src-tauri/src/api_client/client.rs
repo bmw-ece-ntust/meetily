@@ -264,13 +264,7 @@ impl ApiClient {
         meeting_id: &str,
         template: &SummaryTemplate,
     ) -> ApiResult<Summary> {
-        let template_str = match template {
-            SummaryTemplate::KeyPoints => "key_points",
-            SummaryTemplate::ActionItems => "action_items",
-            SummaryTemplate::Decisions => "decisions",
-            SummaryTemplate::Full => "full",
-        };
-        
+        let template_str = template.as_api_str();
         let url = self.build_url(&format!("/meetings/{}/summary/{}", meeting_id, template_str));
         let builder = self.client.get(&url);
         let builder = self.add_auth_header(builder);

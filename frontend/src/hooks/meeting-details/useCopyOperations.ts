@@ -3,7 +3,8 @@ import { Transcript, Summary } from '@/types';
 import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
-import { invoke as invokeTauri } from '@tauri-apps/api/core';
+import { meetingApiService } from '@/services/meetingApiService';
+import type { TranscriptDisplayMode } from '@/components/MeetingDetails/TranscriptButtonGroup';
 
 interface UseCopyOperationsProps {
   meeting: any;
@@ -11,6 +12,8 @@ interface UseCopyOperationsProps {
   meetingTitle: string;
   aiSummary: Summary | null;
   blockNoteSummaryRef: RefObject<BlockNoteSummaryViewRef>;
+  refinedText?: string | null;
+  displayMode?: TranscriptDisplayMode;
 }
 
 export function useCopyOperations({
@@ -19,80 +22,35 @@ export function useCopyOperations({
   meetingTitle,
   aiSummary,
   blockNoteSummaryRef,
+  refinedText = null,
+  displayMode = 'raw',
 }: UseCopyOperationsProps) {
-
-  // Helper function to fetch ALL transcripts for copying (not just paginated data)
-  const fetchAllTranscripts = useCallback(async (meetingId: string): Promise<Transcript[]> => {
-    try {
-      console.log('📊 Fetching all transcripts for copying:', meetingId);
-
-      // First, get total count by fetching first page
-      const firstPage = await invokeTauri('get_transcript', {
-        meetingId,
-        limit: 1,
-        offset: 0,
-      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string; speaker?: string }> } }; error?: string };
-
-      if (!firstPage.success) {
-        throw new Error(firstPage.error || 'Failed to fetch transcripts');
-      }
-
-      const totalCount = firstPage.data?.transcript?.segments?.length || 0;
-      console.log(`📊 Total transcripts in database: ${totalCount}`);
-
-      if (totalCount === 0) {
-        return [];
-      }
-
-      // Fetch all transcripts in one call
-      const allData = await invokeTauri('get_transcript', {
-        meetingId,
-        limit: totalCount,
-        offset: 0,
-      }) as { success: boolean; data?: { transcript?: { segments?: Array<{ id: number; start: number; end: number; text: string; speaker?: string }> } }; error?: string };
-
-      if (!allData.success) {
-        throw new Error(allData.error || 'Failed to fetch transcripts');
-      }
-
-      const transcripts = (allData.data?.transcript?.segments || []).map((segment) => ({
-        id: String(segment.id),
-        text: segment.text,
-        timestamp: '',
-        audio_start_time: segment.start,
-        audio_end_time: segment.end,
-        duration: segment.end - segment.start,
-        speaker: segment.speaker,
-      }));
-
-      console.log(`✅ Fetched ${transcripts.length} transcripts from database for copying`);
-      return transcripts;
-    } catch (error) {
-      console.error('❌ Error fetching all transcripts:', error);
-      toast.error('Failed to fetch transcripts for copying');
-      return [];
-    }
-  }, []);
 
   // Copy transcript to clipboard
   const handleCopyTranscript = useCallback(async () => {
-    // CHANGE: Fetch ALL transcripts from database, not from pagination state
-    console.log('📊 Fetching all transcripts for copying...');
-    const allTranscripts = await fetchAllTranscripts(meeting.id);
+    const header = `# Transcript of the Meeting: ${meeting.id} - ${meetingTitle ?? meeting.title}\n\n`;
+    const date = `## Date: ${new Date(meeting.created_at).toLocaleDateString()}\n\n`;
 
-    if (!allTranscripts.length) {
-      const error_msg = 'No transcripts available to copy';
-      console.log(error_msg);
-      toast.error(error_msg);
-      return;
+    let allTranscripts = transcripts;
+    let docRefined = refinedText;
+    try {
+      const payload = await meetingApiService.getTranscript(meeting.id);
+      if (payload.segments.length) {
+        allTranscripts = payload.segments;
+      }
+      if (payload.refinedText) {
+        docRefined = payload.refinedText;
+      }
+    } catch (error) {
+      console.error('Failed to fetch transcripts for copying:', error);
+      if (!allTranscripts.length && !(displayMode === 'refined' && docRefined?.trim())) {
+        toast.error('Failed to fetch transcripts for copying');
+        return;
+      }
     }
 
-    console.log(`✅ Copying ${allTranscripts.length} transcripts to clipboard`);
-
-    // Format timestamps as recording-relative [MM:SS] instead of wall-clock time
     const formatTime = (seconds: number | undefined, fallbackTimestamp: string): string => {
       if (seconds === undefined) {
-        // For old transcripts without audio_start_time, use wall-clock time
         return fallbackTimestamp;
       }
       const totalSecs = Math.floor(seconds);
@@ -101,30 +59,62 @@ export function useCopyOperations({
       return `[${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}]`;
     };
 
-    const header = `# Transcript of the Meeting: ${meeting.id} - ${meetingTitle ?? meeting.title}\n\n`;
-    const date = `## Date: ${new Date(meeting.created_at).toLocaleDateString()}\n\n`;
-    const fullTranscript = allTranscripts
-      .map(t => {
-        const time = formatTime(t.audio_start_time, t.timestamp);
-        const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
-        return `${time} ${speaker}${t.text}  `;
-      })
-      .join('\n');
+    const useRefined = displayMode === 'refined';
+    const hasSegmentRefined = allTranscripts.some((t) => Boolean(t.refined_text?.trim()));
+
+    let fullTranscript: string;
+    let mode: string;
+    let count: number;
+    let wordSource: string[];
+
+    if (useRefined && hasSegmentRefined) {
+      fullTranscript = allTranscripts
+        .map((t) => {
+          const time = formatTime(t.audio_start_time, t.timestamp);
+          const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
+          const text = t.refined_text?.trim() || t.text;
+          return `${time} ${speaker}${text}  `;
+        })
+        .join('\n');
+      mode = 'refined';
+      count = allTranscripts.length;
+      wordSource = allTranscripts.map((t) => t.refined_text?.trim() || t.text);
+    } else if (useRefined && docRefined?.trim()) {
+      fullTranscript = docRefined.trim();
+      mode = 'refined';
+      count = 1;
+      wordSource = [docRefined.trim()];
+    } else {
+      if (!allTranscripts.length) {
+        toast.error('No transcripts available to copy');
+        return;
+      }
+      fullTranscript = allTranscripts
+        .map((t) => {
+          const time = formatTime(t.audio_start_time, t.timestamp);
+          const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
+          return `${time} ${speaker}${t.text}  `;
+        })
+        .join('\n');
+      mode = 'raw';
+      count = allTranscripts.length;
+      wordSource = allTranscripts.map((t) => t.text);
+    }
 
     await navigator.clipboard.writeText(header + date + fullTranscript);
-    toast.success("Transcript copied to clipboard");
+    toast.success(mode === 'refined' ? 'Refined transcript copied to clipboard' : 'Transcript copied to clipboard');
 
-    // Track copy analytics
-    const wordCount = allTranscripts
-      .map(t => t.text.split(/\s+/).length)
+    const wordCount = wordSource
+      .map((t) => t.split(/\s+/).length)
       .reduce((a, b) => a + b, 0);
 
     await Analytics.trackCopy('transcript', {
       meeting_id: meeting.id,
-      transcript_length: allTranscripts.length.toString(),
-      word_count: wordCount.toString()
+      transcript_length: count.toString(),
+      word_count: wordCount.toString(),
+      mode,
     });
-  }, [meeting, meetingTitle, fetchAllTranscripts]);
+  }, [meeting, meetingTitle, transcripts, refinedText, displayMode]);
 
   // Copy summary to clipboard
   const handleCopySummary = useCallback(async () => {

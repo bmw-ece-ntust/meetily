@@ -159,6 +159,8 @@ pub struct TranscriptSegment {
     pub no_speech_prob: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refined_text: Option<String>,
 }
 
 /// Matched transcript segment from global search.
@@ -226,20 +228,61 @@ pub struct Summary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum SummaryTemplate {
+    #[serde(alias = "keypoints", alias = "KeyPoints", alias = "keyPoints")]
     KeyPoints,
+    #[serde(alias = "actionitems", alias = "ActionItems", alias = "actionItems")]
     ActionItems,
+    #[serde(alias = "Decisions")]
     Decisions,
+    #[serde(alias = "Full")]
     Full,
+    #[serde(
+        alias = "meetingnotes",
+        alias = "MeetingNotes",
+        alias = "meetingNotes"
+    )]
+    MeetingNotes,
+}
+
+impl SummaryTemplate {
+    pub fn as_api_str(&self) -> &'static str {
+        match self {
+            SummaryTemplate::KeyPoints => "key_points",
+            SummaryTemplate::ActionItems => "action_items",
+            SummaryTemplate::Decisions => "decisions",
+            SummaryTemplate::Full => "full",
+            SummaryTemplate::MeetingNotes => "meeting_notes",
+        }
+    }
+
+    pub fn from_api_str(s: &str) -> Option<Self> {
+        match s {
+            "key_points" | "keypoints" | "KeyPoints" | "keyPoints" => Some(Self::KeyPoints),
+            "action_items" | "actionitems" | "ActionItems" | "actionItems" => {
+                Some(Self::ActionItems)
+            }
+            "decisions" | "Decisions" => Some(Self::Decisions),
+            "full" | "Full" => Some(Self::Full),
+            "meeting_notes" | "meetingnotes" | "MeetingNotes" | "meetingNotes" => {
+                Some(Self::MeetingNotes)
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum SummaryStatus {
+    #[serde(alias = "Pending")]
     Pending,
+    #[serde(alias = "Processing")]
     Processing,
+    #[serde(alias = "Completed")]
     Completed,
+    #[serde(alias = "Failed")]
     Failed,
 }
 

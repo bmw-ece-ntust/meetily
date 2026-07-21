@@ -31,6 +31,8 @@ interface SummaryPanelProps {
   availableTemplates: Array<{ id: string, name: string, description: string }>;
   selectedTemplate: string;
   onTemplateSelect: (templateId: string, templateName: string) => void;
+  onPublishToGithub?: () => Promise<void> | void;
+  isPublishing?: boolean;
 }
 
 export function SummaryPanel({
@@ -52,6 +54,8 @@ export function SummaryPanel({
   availableTemplates,
   selectedTemplate,
   onTemplateSelect,
+  onPublishToGithub,
+  isPublishing = false,
 }: SummaryPanelProps) {
   const isSummaryLoading = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
 
@@ -59,6 +63,8 @@ export function SummaryPanel({
     <SummaryGeneratorButtonGroup
       onGenerateSummary={onGenerateSummary}
       onStopGeneration={onStopGeneration}
+      onPublishToGithub={onPublishToGithub}
+      isPublishing={isPublishing}
       summaryStatus={summaryStatus}
       availableTemplates={availableTemplates}
       selectedTemplate={selectedTemplate}

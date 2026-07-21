@@ -140,7 +140,8 @@ export function PermissionsStep({ onComplete }: PermissionsStepProps) {
     <OnboardingContainer
       title="Grant Permissions"
       description="Meetily needs access to your microphone and system audio to record meetings"
-      step={3}
+      step={4}
+      totalSteps={4}
       hideProgress={true}
       showNavigation={allPermissionsGranted}
       canGoNext={allPermissionsGranted}

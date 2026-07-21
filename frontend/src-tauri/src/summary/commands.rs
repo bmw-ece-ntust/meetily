@@ -194,6 +194,7 @@ pub async fn api_process_transcript<R: Runtime>(
         Some("key_points") => crate::api_client::types::SummaryTemplate::KeyPoints,
         Some("action_items") => crate::api_client::types::SummaryTemplate::ActionItems,
         Some("decisions") => crate::api_client::types::SummaryTemplate::Decisions,
+        Some("meeting_notes") => crate::api_client::types::SummaryTemplate::MeetingNotes,
         _ => crate::api_client::types::SummaryTemplate::Full,
     };
 

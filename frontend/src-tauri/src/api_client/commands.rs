@@ -278,6 +278,38 @@ pub async fn list_summaries(
     }
 }
 
+fn parse_summary_template(template: &str) -> Result<SummaryTemplate, String> {
+    SummaryTemplate::from_api_str(template)
+        .ok_or_else(|| format!("Invalid template: {}", template))
+}
+
+#[tauri::command]
+pub async fn get_summary(
+    meeting_id: String,
+    template: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<Option<Summary>>, String> {
+    let template_enum = match parse_summary_template(&template) {
+        Ok(t) => t,
+        Err(e) => return Ok(CommandResult::error(e)),
+    };
+
+    let client = client.read().await;
+    match client.get_summary(&meeting_id, &template_enum).await {
+        Ok(summary) => Ok(CommandResult::success(Some(summary))),
+        Err(ApiError::NotFound(_)) => Ok(CommandResult::success(None)),
+        Err(e) => {
+            // Some backends return 404-like API errors for missing template summaries
+            let msg = e.to_string();
+            if msg.contains("404") || msg.to_lowercase().contains("not found") {
+                Ok(CommandResult::success(None))
+            } else {
+                Ok(CommandResult::error(format!("Failed to get summary: {}", e)))
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn generate_summary(
     meeting_id: String,
@@ -285,15 +317,9 @@ pub async fn generate_summary(
     language: Option<String>,
     client: State<'_, Arc<RwLock<ApiClient>>>,
 ) -> Result<CommandResult<ImportResponse>, String> {
-    // Parse template
-    let template_enum = match template.as_str() {
-        "key_points" => SummaryTemplate::KeyPoints,
-        "action_items" => SummaryTemplate::ActionItems,
-        "decisions" => SummaryTemplate::Decisions,
-        "full" => SummaryTemplate::Full,
-        _ => {
-            return Ok(CommandResult::error(format!("Invalid template: {}", template)));
-        }
+    let template_enum = match parse_summary_template(&template) {
+        Ok(t) => t,
+        Err(e) => return Ok(CommandResult::error(e)),
     };
 
     let request = GenerateSummaryRequest {

@@ -26,6 +26,7 @@ export function useSummaryGeneration({
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [activeLocalId, setActiveLocalId] = useState<string | null>(null);
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
 
   const meetingSummaryJob = useMemo(
     () =>
@@ -79,6 +80,35 @@ export function useSummaryGeneration({
     }
   }, []);
 
+  /** Load existing summary for a template. Returns true if found. Does not start generation. */
+  const loadTemplateSummary = useCallback(
+    async (templateId: string): Promise<boolean> => {
+      if (!meeting?.id) return false;
+      setIsLoadingTemplate(true);
+      setSummaryError(null);
+      try {
+        const summary = await meetingApiService.getSummary(meeting.id, templateId);
+        if (summary) {
+          setAiSummary(summary);
+          setSummaryStatus('completed');
+          return true;
+        }
+        setAiSummary(null);
+        setSummaryStatus('idle');
+        return false;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setAiSummary(null);
+        setSummaryStatus('idle');
+        setSummaryError(message);
+        return false;
+      } finally {
+        setIsLoadingTemplate(false);
+      }
+    },
+    [meeting?.id, setAiSummary]
+  );
+
   const runSummaryJob = useCallback(async (isRegeneration = false) => {
     if (!transcripts.length) {
       toast.error('No transcripts available for summary');
@@ -94,15 +124,17 @@ export function useSummaryGeneration({
     setSummaryStatus(isRegeneration ? 'regenerating' : 'processing');
     setSummaryError(null);
 
+    const templateForJob = selectedTemplate;
+
     const localId = enqueueSummary({
       meetingId: meeting.id,
-      template: selectedTemplate,
+      template: templateForJob,
       language: null,
       meetingTitle: meeting.title || meeting.id,
       isRegeneration,
       onComplete: async (meetingId) => {
         try {
-          const summary = await meetingApiService.getSummary(meetingId);
+          const summary = await meetingApiService.getSummary(meetingId, templateForJob);
           if (!summary) throw new Error('Summary job completed but no summary was returned');
           setAiSummary(summary);
           setSummaryStatus('completed');
@@ -156,6 +188,8 @@ export function useSummaryGeneration({
   return {
     summaryStatus,
     summaryError,
+    isLoadingTemplate,
+    loadTemplateSummary,
     handleGenerateSummary,
     handleRegenerateSummary,
     handleStopGeneration,

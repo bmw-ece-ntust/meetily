@@ -15,6 +15,7 @@ interface MeetingDetailsResponse {
   created_at: string;
   updated_at: string;
   transcripts: Transcript[];
+  refinedText: string | null;
   folder_path?: string;
 }
 
@@ -42,19 +43,21 @@ function MeetingDetailsContent() {
     try {
       setIsLoading(true);
       const meeting = await meetingApiService.getMeeting(meetingId);
-      const transcripts = await meetingApiService.getTranscript(meetingId);
+      const { segments, refinedText } = await meetingApiService.getTranscript(meetingId);
 
       setMeetingDetails({
         id: meeting.id,
         title: meeting.title,
         created_at: meeting.created_at,
         updated_at: meeting.updated_at,
-        transcripts,
+        transcripts: segments,
+        refinedText,
         folder_path: meeting.folder_path,
       });
 
       try {
-        const summary = await meetingApiService.getSummary(meetingId);
+        // Default template is "full" — load that if present, else null (needs generate)
+        const summary = await meetingApiService.getSummary(meetingId, 'full');
         setMeetingSummary(summary);
       } catch {
         setMeetingSummary(null);
