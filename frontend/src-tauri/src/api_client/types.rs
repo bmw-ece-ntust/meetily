@@ -227,18 +227,30 @@ pub struct Summary {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Wire format matches ai-meeting-agent:
+/// `keypoints` | `actionitems` | `decisions` | `full` | `meeting_notes` | `meetingnotes`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
 pub enum SummaryTemplate {
-    #[serde(alias = "keypoints", alias = "KeyPoints", alias = "keyPoints")]
+    #[serde(
+        rename = "keypoints",
+        alias = "key_points",
+        alias = "KeyPoints",
+        alias = "keyPoints"
+    )]
     KeyPoints,
-    #[serde(alias = "actionitems", alias = "ActionItems", alias = "actionItems")]
+    #[serde(
+        rename = "actionitems",
+        alias = "action_items",
+        alias = "ActionItems",
+        alias = "actionItems"
+    )]
     ActionItems,
-    #[serde(alias = "Decisions")]
+    #[serde(rename = "decisions", alias = "Decisions")]
     Decisions,
-    #[serde(alias = "Full")]
+    #[serde(rename = "full", alias = "Full")]
     Full,
     #[serde(
+        rename = "meeting_notes",
         alias = "meetingnotes",
         alias = "MeetingNotes",
         alias = "meetingNotes"
@@ -247,10 +259,11 @@ pub enum SummaryTemplate {
 }
 
 impl SummaryTemplate {
+    /// Path/query segment for GET `/meetings/{id}/summary/{template}`
     pub fn as_api_str(&self) -> &'static str {
         match self {
-            SummaryTemplate::KeyPoints => "key_points",
-            SummaryTemplate::ActionItems => "action_items",
+            SummaryTemplate::KeyPoints => "keypoints",
+            SummaryTemplate::ActionItems => "actionitems",
             SummaryTemplate::Decisions => "decisions",
             SummaryTemplate::Full => "full",
             SummaryTemplate::MeetingNotes => "meeting_notes",

@@ -96,7 +96,9 @@ export function SummaryPanel({
           <div className="flex items-center justify-center flex-1">
             <div className="text-center">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-              <p className="text-gray-600">Generating AI Summary...</p>
+              <p className="text-gray-600">
+                {getSummaryStatusMessage(summaryStatus) || 'Generating AI Summary...'}
+              </p>
             </div>
           </div>
         </div>
