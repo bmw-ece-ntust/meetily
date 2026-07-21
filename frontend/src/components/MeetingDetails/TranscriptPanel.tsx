@@ -18,6 +18,7 @@ function loadStoredMode(hasRefined: boolean): TranscriptDisplayMode {
 
 interface TranscriptPanelProps {
   transcripts: Transcript[];
+  personNames?: { [personId: string]: string }; // Voice bank person names
   refinedText?: string | null;
   onCopyTranscript: () => void;
   isRecording: boolean;
@@ -32,6 +33,7 @@ interface TranscriptPanelProps {
 
 export function TranscriptPanel({
   transcripts,
+  personNames = {},
   refinedText = null,
   onCopyTranscript,
   isRecording,
@@ -123,6 +125,7 @@ export function TranscriptPanel({
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-4">
         <TranscriptView
           transcripts={displayTranscripts}
+          personNames={personNames}
           isRecording={isRecording}
           isPaused={false}
           isProcessing={false}

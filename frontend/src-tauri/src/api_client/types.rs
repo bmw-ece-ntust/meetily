@@ -298,6 +298,12 @@ pub struct IdentifySpeakersResponse {
     pub identities: Vec<SpeakerIdentityResponse>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClearIdentificationResponse {
+    pub meeting_id: String,
+    pub cleared_segments: u64,
+}
+
 /// Matched transcript segment from global search.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatchedSegment {

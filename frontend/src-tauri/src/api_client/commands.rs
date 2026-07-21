@@ -290,6 +290,25 @@ pub async fn identify_meeting_speakers(
     }
 }
 
+#[tauri::command]
+pub async fn clear_meeting_speaker_identification(
+    meeting_id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+    cache: State<'_, Arc<MemoryCache>>,
+) -> Result<CommandResult<ClearIdentificationResponse>, String> {
+    let client = client.read().await;
+    match client.clear_speaker_identification(&meeting_id).await {
+        Ok(response) => {
+            cache.remove_transcript(&meeting_id).await;
+            Ok(CommandResult::success(response))
+        }
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to clear identification: {}",
+            e
+        ))),
+    }
+}
+
 // ============================================================================
 // Voice bank / persons
 // ============================================================================

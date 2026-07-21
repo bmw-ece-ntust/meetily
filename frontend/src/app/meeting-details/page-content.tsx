@@ -188,6 +188,7 @@ export default function PageContent({
       <div ref={containerRef} className="flex flex-1 overflow-hidden">
         <TranscriptPanel
           transcripts={meetingData.transcripts}
+          personNames={meetingData.personNames}
           refinedText={meeting?.refinedText ?? null}
           onCopyTranscript={copyOperations.handleCopyTranscript}
           isRecording={false}
@@ -210,6 +211,7 @@ export default function PageContent({
           meeting={meeting}
           meetingTitle={meetingData.meetingTitle}
           participants={meetingData.participants}
+          personNames={meetingData.personNames}
           location={meetingData.location}
           organizer={meetingData.organizer}
           meetingDate={meetingData.meetingDate}
@@ -245,6 +247,7 @@ export default function PageContent({
           onSaveMeetingDetails={(fields) => meetingData.handleSaveMeetingDetails(fields)}
           onRenameSpeakers={(mapping) => meetingData.handleRenameSpeakers(mapping)}
           onIdentifySpeakers={meetingData.handleIdentifySpeakers}
+          onClearIdentification={meetingData.handleClearIdentification}
           summaryError={summaryGeneration.summaryError}
           getSummaryStatusMessage={(status) =>
             summaryGeneration.isLoadingTemplate

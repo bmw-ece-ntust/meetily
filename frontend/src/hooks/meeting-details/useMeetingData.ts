@@ -5,6 +5,7 @@ import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { voiceBankApiService } from '@/services/voiceBankApiService';
+import { usePersonNames } from '@/hooks/usePersonNames';
 
 interface UseMeetingDataProps {
   meeting: any;
@@ -13,6 +14,9 @@ interface UseMeetingDataProps {
 }
 
 export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMeetingDataProps) {
+  // Fetch person names from voice bank
+  const { personNames, loading: personNamesLoading, error: personNamesError } = usePersonNames();
+
   // State
   // Use prop directly since summary generation fetches transcripts independently
   // Add defensive null check to prevent undefined transcripts
@@ -266,6 +270,25 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     }
   }, [meeting.id, onMeetingUpdated]);
 
+  const handleClearIdentification = useCallback(async () => {
+    try {
+      await invokeTauri('clear_meeting_speaker_identification', {
+        meetingId: meeting.id,
+      });
+      if (onMeetingUpdated) await onMeetingUpdated();
+      toast.success('Voice identification cleared', {
+        description: 'Speakers reverted to manual labels.',
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to clear identification:', error);
+      toast.error('Failed to clear identification', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }, [meeting.id, onMeetingUpdated]);
+
   const handleSaveSummary = useCallback(async (summary: Summary | { markdown?: string; summary_json?: any[] }) => {
     console.log('📄 handleSaveSummary called with:', {
       hasMarkdown: 'markdown' in summary,
@@ -358,6 +381,9 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
   return {
     // State
     transcripts,
+    personNames,
+    personNamesLoading,
+    personNamesError,
     meetingTitle,
     isEditingTitle,
     isTitleDirty,
@@ -391,6 +417,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     handleSaveMeetingDetails,
     handleRenameSpeakers,
     handleIdentifySpeakers,
+    handleClearIdentification,
     saveAllChanges,
     updateMeetingTitle,
   };

@@ -11,7 +11,7 @@ import { EditMeetingDetailsDialog } from './EditMeetingDetailsDialog';
 import { EditSpeakerLabelsDialog } from './EditSpeakerLabelsDialog';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import Analytics from '@/lib/analytics';
-import { MapPin, Pencil, Tags, Users } from 'lucide-react';
+import { MapPin, Pencil, Tags, Users, XCircle } from 'lucide-react';
 import { RefObject, useMemo, useState } from 'react';
 
 interface SummaryPanelProps {
@@ -23,6 +23,7 @@ interface SummaryPanelProps {
   };
   meetingTitle: string;
   participants: string[];
+  personNames?: { [personId: string]: string }; // Voice bank person names
   location: string | null;
   organizer: string | null;
   meetingDate: string | null;
@@ -48,6 +49,7 @@ interface SummaryPanelProps {
   }) => Promise<boolean>;
   onRenameSpeakers: (mapping: Record<string, string>) => Promise<boolean>;
   onIdentifySpeakers: () => Promise<boolean>;
+  onClearIdentification: () => Promise<boolean>;
   summaryError: string | null;
   onRegenerateSummary: () => Promise<void>;
   getSummaryStatusMessage: (status: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error') => string;
@@ -62,6 +64,7 @@ export function SummaryPanel({
   meeting,
   meetingTitle,
   participants,
+  personNames = {},
   location,
   organizer,
   meetingDate,
@@ -83,6 +86,7 @@ export function SummaryPanel({
   onSaveMeetingDetails,
   onRenameSpeakers,
   onIdentifySpeakers,
+  onClearIdentification,
   summaryError,
   onRegenerateSummary,
   getSummaryStatusMessage,
@@ -111,6 +115,33 @@ export function SummaryPanel({
       ),
     [transcripts]
   );
+
+  // Helper to get speaker display info with person identification
+  const getSpeakerDisplayInfo = (speaker: string) => {
+    // Find a transcript segment with this speaker that has person_id
+    const segment = transcripts.find((t) => t.speaker === speaker && t.person_id);
+    const personId = segment?.person_id;
+    const personName = personId ? personNames[personId] : null;
+    const isIdentified = !!personName;
+    const isGuest = personName?.startsWith('Guest-');
+
+    let badgeColor = 'bg-violet-50 text-violet-800'; // Manual label (default)
+    if (isIdentified) {
+      if (isGuest) {
+        badgeColor = 'bg-amber-50 text-amber-800'; // Guest
+      } else {
+        badgeColor = 'bg-green-50 text-green-800'; // Matched person
+      }
+    }
+
+    return {
+      displayName: personName || speaker,
+      badgeColor,
+      isIdentified,
+      isGuest,
+      personId,
+    };
+  };
 
   const detailsLine = useMemo(() => {
     const parts: string[] = [];
@@ -207,14 +238,17 @@ export function SummaryPanel({
                 >
                   <Tags className="h-3.5 w-3.5 shrink-0" />
                   <span className="flex flex-wrap gap-1">
-                    {speakerLabels.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex px-2 py-0.5 rounded-full bg-violet-50 text-violet-800 text-xs font-mono"
-                      >
-                        {s}
-                      </span>
-                    ))}
+                    {speakerLabels.map((s) => {
+                      const info = getSpeakerDisplayInfo(s);
+                      return (
+                        <span
+                          key={s}
+                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-mono ${info.badgeColor}`}
+                        >
+                          {info.displayName}
+                        </span>
+                      );
+                    })}
                   </span>
                 </button>
                 <button
@@ -228,6 +262,21 @@ export function SummaryPanel({
                   <Users className="h-3.5 w-3.5 shrink-0" />
                   <span>Identify Speakers</span>
                 </button>
+                {transcripts.some(t => t.person_id) && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (confirm('Clear all voice identifications? Speakers will revert to manual labels.')) {
+                        await onClearIdentification();
+                      }
+                    }}
+                    className="mt-1 flex items-center gap-1.5 text-left text-sm text-red-600 hover:text-red-900 font-medium"
+                    title="Clear voice identifications and revert to manual labels"
+                  >
+                    <XCircle className="h-3.5 w-3.5 shrink-0" />
+                    <span>Clear Voice Identification</span>
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -334,6 +383,8 @@ export function SummaryPanel({
       <EditSpeakerLabelsDialog
         open={speakersDialogOpen}
         speakers={speakerLabels}
+        transcripts={transcripts}
+        personNames={personNames}
         onSave={onRenameSpeakers}
         onCancel={() => setSpeakersDialogOpen(false)}
       />

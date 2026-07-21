@@ -5,9 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { RecordingStatusBar } from './RecordingStatusBar';
 import { motion, AnimatePresence } from 'framer-motion';
+import { UserCheck, User } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface TranscriptViewProps {
   transcripts: Transcript[];
+  personNames?: { [personId: string]: string }; // Voice bank person names mapping
   isRecording?: boolean;
   isPaused?: boolean; // Is recording paused (affects UI indicators)
   isProcessing?: boolean; // Is processing/finalizing transcription (hides "Listening..." indicator)
@@ -103,7 +106,15 @@ function cleanStopWords(text: string): string {
   return cleanedText;
 }
 
-export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isRecording = false, isPaused = false, isProcessing = false, isStopping = false, enableStreaming = false }) => {
+export const TranscriptView: React.FC<TranscriptViewProps> = ({ 
+  transcripts, 
+  personNames = {}, 
+  isRecording = false, 
+  isPaused = false, 
+  isProcessing = false, 
+  isStopping = false, 
+  enableStreaming = false 
+}) => {
   const [speechDetected, setSpeechDetected] = useState(false);
 
   // Debug: Log the props to understand what's happening
@@ -303,9 +314,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                 </TooltipContent>
               </Tooltip>
               {transcript.speaker?.trim() && (
-                <span className="text-xs font-medium text-gray-500 mt-1 flex-shrink-0">
-                  {transcript.speaker.trim()}
-                </span>
+                <SpeakerBadge 
+                  transcript={transcript} 
+                  personNames={personNames}
+                />
               )}
               <div className="flex-1">
                 {isStreaming ? (
@@ -382,3 +394,78 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
     </div>
   );
 };
+
+// Helper component for speaker badge with person identification
+interface SpeakerBadgeProps {
+  transcript: Transcript;
+  personNames: { [personId: string]: string };
+}
+
+function SpeakerBadge({ transcript, personNames }: SpeakerBadgeProps) {
+  const router = useRouter();
+  const speaker = transcript.speaker?.trim();
+  const personId = transcript.person_id;
+  const confidence = transcript.identify_confidence;
+  
+  if (!speaker) return null;
+
+  // Check if this speaker is identified from voice bank
+  const personName = personId ? personNames[personId] : null;
+  const isIdentified = !!personName;
+  const isGuest = personName?.startsWith('Guest-');
+
+  // Determine badge color and icon
+  let badgeColor = 'bg-violet-100 text-violet-700'; // Manual label (default)
+  let Icon = null;
+
+  if (isIdentified) {
+    if (isGuest) {
+      // Guest: amber badge + User icon
+      badgeColor = 'bg-amber-100 text-amber-700';
+      Icon = User;
+    } else {
+      // Matched person: green badge + UserCheck icon
+      badgeColor = 'bg-green-100 text-green-700';
+      Icon = UserCheck;
+    }
+  }
+
+  const displayName = personName || speaker;
+
+  const handleClick = () => {
+    if (isIdentified && !isGuest && personId) {
+      // Navigate to voice bank person detail
+      router.push(`/voice-bank/${personId}`);
+    }
+  };
+
+  const badge = (
+    <span
+      className={`text-xs font-medium px-2 py-1 rounded-md flex items-center gap-1 mt-1 flex-shrink-0 ${badgeColor} ${
+        isIdentified && !isGuest ? 'cursor-pointer hover:opacity-80' : ''
+      }`}
+      onClick={handleClick}
+    >
+      {Icon && <Icon className="w-3 h-3" />}
+      {displayName}
+    </span>
+  );
+
+  // Wrap in tooltip if confidence available
+  if (confidence !== undefined && confidence !== null) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {badge}
+        </TooltipTrigger>
+        <TooltipContent>
+          <span className="text-xs">
+            Confidence: {(confidence * 100).toFixed(1)}%
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return badge;
+}

@@ -184,6 +184,14 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
+    pub async fn clear_speaker_identification(&self, id: &str) -> ApiResult<ClearIdentificationResponse> {
+        let url = self.build_url(&format!("/meetings/{}/speakers/clear-identification", id));
+        let builder = self.client.patch(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
     // ========================================================================
     // Voice bank / persons
     // ========================================================================

@@ -18,6 +18,9 @@ export interface Transcript {
   duration?: number;          // Segment duration in seconds (e.g., 3.3)
   speaker?: string;           // Optional diarization label (e.g., SPEAKER_00)
   refined_text?: string | null; // LLM-refined segment text when available
+  // Voice identification fields
+  person_id?: string | null;  // Voice bank person ID when identified
+  identify_confidence?: number | null; // Confidence score (0.0-1.0)
 }
 
 export interface TranscriptUpdate {

@@ -8,11 +8,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
+import { Transcript } from '@/types';
+import { Lock } from 'lucide-react';
 
 interface EditSpeakerLabelsDialogProps {
   open: boolean;
   /** Unique speaker labels from the current transcript. */
   speakers: string[];
+  /** Full transcript segments to check person_id */
+  transcripts?: Transcript[];
+  /** Voice bank person names mapping */
+  personNames?: { [personId: string]: string };
   onSave: (mapping: Record<string, string>) => Promise<boolean> | boolean;
   onCancel: () => void;
 }
@@ -20,6 +26,8 @@ interface EditSpeakerLabelsDialogProps {
 export function EditSpeakerLabelsDialog({
   open,
   speakers,
+  transcripts = [],
+  personNames = {},
   onSave,
   onCancel,
 }: EditSpeakerLabelsDialogProps) {
@@ -30,6 +38,14 @@ export function EditSpeakerLabelsDialog({
       ).sort((a, b) => a.localeCompare(b)),
     [speakers]
   );
+
+  // Check if a speaker is identified and locked (non-Guest)
+  const isLocked = (speaker: string): boolean => {
+    const segment = transcripts.find((t) => t.speaker === speaker && t.person_id);
+    if (!segment?.person_id) return false;
+    const personName = personNames[segment.person_id];
+    return !!personName && !personName.startsWith('Guest-');
+  };
 
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -77,23 +93,35 @@ export function EditSpeakerLabelsDialog({
             <p className="text-sm text-gray-400 italic">No speaker labels in this transcript.</p>
           ) : (
             <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
-              {unique.map((label) => (
-                <div key={label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                  <span className="text-sm font-mono text-gray-600 truncate" title={label}>
-                    {label}
-                  </span>
-                  <span className="text-gray-400 text-sm">→</span>
-                  <input
-                    type="text"
-                    value={draft[label] ?? ''}
-                    onChange={(e) =>
-                      setDraft((prev) => ({ ...prev, [label]: e.target.value }))
-                    }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="New name"
-                  />
-                </div>
-              ))}
+              {unique.map((label) => {
+                const locked = isLocked(label);
+                return (
+                  <div key={label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <span className="text-sm font-mono text-gray-600 truncate" title={label}>
+                      {label}
+                    </span>
+                    <span className="text-gray-400 text-sm">→</span>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={draft[label] ?? ''}
+                        onChange={(e) =>
+                          setDraft((prev) => ({ ...prev, [label]: e.target.value }))
+                        }
+                        disabled={locked}
+                        className={`w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          locked ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''
+                        }`}
+                        placeholder="New name"
+                        title={locked ? 'Cannot rename identified speakers (use Clear Voice Identification first)' : undefined}
+                      />
+                      {locked && (
+                        <Lock className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
