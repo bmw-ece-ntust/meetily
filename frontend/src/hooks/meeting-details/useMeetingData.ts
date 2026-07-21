@@ -239,11 +239,23 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     try {
       const result = await voiceBankApiService.identifySpeakers(meeting.id);
       if (onMeetingUpdated) await onMeetingUpdated();
+      const enrolled = result.identities.filter((i) => i.person_id && i.display_name.startsWith('Guest-')).length;
       const parts: string[] = [];
       if (result.matched > 0) parts.push(`${result.matched} matched`);
-      if (result.guests > 0) parts.push(`${result.guests} guests`);
+      if (result.guests > 0) {
+        parts.push(
+          enrolled > 0
+            ? `${result.guests} new in voice bank`
+            : `${result.guests} guests`
+        );
+      }
       if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
-      toast.success(`Identified speakers (${result.updated_segments} segments): ${parts.join(', ')}`);
+      toast.success(
+        `Identified speakers (${result.updated_segments} segments): ${parts.join(', ') || 'done'}`,
+        enrolled > 0
+          ? { description: 'Rename Guest-N in Voice Bank when you know their names.' }
+          : undefined
+      );
       return true;
     } catch (error) {
       console.error('Failed to identify speakers:', error);
