@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { voiceBankApiService } from '@/services/voiceBankApiService';
 import type { Person, VoiceprintMeta, VoiceprintSample } from '@/types/voiceBank';
-import { ArrowLeft, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Edit2, Play, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 
 type AudioFileInfo = {
   path: string;
@@ -31,6 +31,9 @@ export function PersonDetailPanel({
   const [voiceprint, setVoiceprint] = useState<VoiceprintMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,6 +46,7 @@ export function PersonDetailPanel({
       setPerson(p);
       setSamples(s);
       setVoiceprint(vps.find((v) => v.person_id === personId) ?? null);
+      setNameInput(p.name);
     } catch (err) {
       toast.error('Failed to load person', {
         description: err instanceof Error ? err.message : String(err),
@@ -132,6 +136,73 @@ export function PersonDetailPanel({
     }
   };
 
+  const playSample = async (sampleId: string) => {
+    if (playingSampleId === sampleId) {
+      setPlayingSampleId(null);
+      return;
+    }
+    try {
+      setPlayingSampleId(sampleId);
+      const bytes = await voiceBankApiService.getSampleAudio(personId, sampleId);
+      const blob = new Blob([bytes as unknown as BlobPart], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        setPlayingSampleId(null);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setPlayingSampleId(null);
+        URL.revokeObjectURL(url);
+        toast.error('Failed to play audio');
+      };
+      await audio.play();
+    } catch (err) {
+      setPlayingSampleId(null);
+      toast.error('Failed to load audio', {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const startEditName = () => {
+    if (!person) return;
+    setNameInput(person.name);
+    setEditingName(true);
+  };
+
+  const cancelEditName = () => {
+    setEditingName(false);
+    setNameInput(person?.name || '');
+  };
+
+  const saveEditName = async () => {
+    if (!person) return;
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    if (trimmed === person.name) {
+      setEditingName(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await voiceBankApiService.updatePerson(personId, { name: trimmed });
+      toast.success('Name updated');
+      await load();
+      onChanged();
+      setEditingName(false);
+    } catch (err) {
+      toast.error('Failed to update name', {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading || !person) {
     return (
       <div className="p-6 text-sm text-gray-500">
@@ -152,8 +223,54 @@ export function PersonDetailPanel({
       </button>
 
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">{person.name}</h2>
+        <div className="flex-1">
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void saveEditName();
+                  if (e.key === 'Escape') cancelEditName();
+                }}
+                disabled={busy}
+                className="text-2xl font-bold text-gray-900 border-b-2 border-blue-500 focus:outline-none bg-transparent"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => void saveEditName()}
+                disabled={busy}
+                className="p-1.5 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
+                title="Save"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditName}
+                disabled={busy}
+                className="p-1.5 text-gray-400 hover:bg-gray-50 rounded disabled:opacity-50"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900">{person.name}</h2>
+              <button
+                type="button"
+                onClick={startEditName}
+                disabled={busy}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded disabled:opacity-50"
+                title="Edit name"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           {person.aliases?.length > 0 && (
             <p className="text-sm text-gray-500 mt-1">
               Aliases: {person.aliases.join(', ')}
@@ -219,7 +336,7 @@ export function PersonDetailPanel({
                 key={s.id}
                 className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="font-mono text-xs text-gray-500 truncate" title={s.audio_path}>
                     {s.audio_path.split('/').pop()}
                   </p>
@@ -228,15 +345,27 @@ export function PersonDetailPanel({
                     {s.source}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void deleteSample(s.id)}
-                  disabled={busy}
-                  className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-50"
-                  aria-label="Delete sample"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void playSample(s.id)}
+                    disabled={busy || (playingSampleId !== null && playingSampleId !== s.id)}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-50"
+                    aria-label={playingSampleId === s.id ? 'Stop playing' : 'Play sample'}
+                    title={playingSampleId === s.id ? 'Stop' : 'Play'}
+                  >
+                    <Play className="w-4 h-4" fill={playingSampleId === s.id ? 'currentColor' : 'none'} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteSample(s.id)}
+                    disabled={busy}
+                    className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-50"
+                    aria-label="Delete sample"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

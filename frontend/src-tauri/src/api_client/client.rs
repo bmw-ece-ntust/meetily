@@ -341,6 +341,36 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
+    /// Download person sample audio bytes (GET /persons/{person_id}/samples/{sample_id}/audio).
+    pub async fn get_person_sample_audio(
+        &self,
+        person_id: &str,
+        sample_id: &str,
+    ) -> ApiResult<Vec<u8>> {
+        let url = self.build_url(&format!(
+            "/persons/{}/samples/{}/audio",
+            person_id, sample_id
+        ));
+        let builder = self.client.get(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+
+        let status = response.status();
+        if status.is_success() {
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| ApiError::NetworkError(e.to_string()))?;
+            Ok(bytes.to_vec())
+        } else {
+            let text = response.text().await.unwrap_or_default();
+            Err(ApiError::ApiError {
+                status: status.as_u16(),
+                message: text,
+            })
+        }
+    }
+
     pub async fn delete_meeting(&self, id: &str) -> ApiResult<()> {
         let url = self.build_url(&format!("/meetings/{}", id));
         let builder = self.client.delete(&url);
