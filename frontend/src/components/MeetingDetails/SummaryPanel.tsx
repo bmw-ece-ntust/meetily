@@ -107,6 +107,9 @@ export function SummaryPanel({
             onGenerate={onGenerateSummary}
             hasModel={true}
             isGenerating={isSummaryLoading}
+            templateName={
+              availableTemplates.find((t) => t.id === selectedTemplate)?.name
+            }
           />
         </div>
       ) : (

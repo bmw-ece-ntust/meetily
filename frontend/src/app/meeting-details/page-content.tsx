@@ -209,7 +209,11 @@ export default function PageContent({
           summaryRef={meetingData.blockNoteSummaryRef}
           onCopySummary={copyOperations.handleCopySummary}
           aiSummary={meetingData.aiSummary}
-          summaryStatus={summaryGeneration.summaryStatus}
+          summaryStatus={
+            summaryGeneration.isLoadingTemplate
+              ? 'processing'
+              : summaryGeneration.summaryStatus
+          }
           transcripts={meetingData.transcripts}
           onGenerateSummary={summaryGeneration.handleGenerateSummary}
           onStopGeneration={summaryGeneration.handleStopGeneration}
@@ -223,7 +227,11 @@ export default function PageContent({
           onSummaryChange={meetingData.setAiSummary}
           onDirtyChange={() => {}}
           summaryError={summaryGeneration.summaryError}
-          getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
+          getSummaryStatusMessage={(status) =>
+            summaryGeneration.isLoadingTemplate
+              ? 'Loading summary for selected template...'
+              : summaryGeneration.getSummaryStatusMessage(status)
+          }
           onPublishToGithub={handlePublishToGithub}
           isPublishing={isPublishing}
         />

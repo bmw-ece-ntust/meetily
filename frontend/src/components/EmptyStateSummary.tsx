@@ -14,9 +14,15 @@ interface EmptyStateSummaryProps {
   onGenerate: () => void;
   hasModel: boolean;
   isGenerating?: boolean;
+  templateName?: string;
 }
 
-export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false }: EmptyStateSummaryProps) {
+export function EmptyStateSummary({
+  onGenerate,
+  hasModel,
+  isGenerating = false,
+  templateName,
+}: EmptyStateSummaryProps) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -26,10 +32,14 @@ export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false }
     >
       <FileQuestion className="w-16 h-16 text-gray-300 mb-4" />
       <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        No Summary Generated Yet
+        {templateName
+          ? `No "${templateName}" summary yet`
+          : 'No Summary Generated Yet'}
       </h3>
       <p className="text-sm text-gray-500 mb-6 max-w-md">
-        Generate an AI-powered summary of your meeting transcript to get key points, action items, and decisions.
+        {templateName
+          ? `This meeting has no saved summary for the ${templateName} template. Generate one to create it.`
+          : 'Generate an AI-powered summary of your meeting transcript to get key points, action items, and decisions.'}
       </p>
 
       <TooltipProvider>
