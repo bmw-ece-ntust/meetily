@@ -9,7 +9,7 @@ import { EditTitleDialog } from './EditTitleDialog';
 import { EditParticipantsDialog } from './EditParticipantsDialog';
 import { EditMeetingDetailsDialog } from './EditMeetingDetailsDialog';
 import { EditSpeakerLabelsDialog } from './EditSpeakerLabelsDialog';
-import { AudioPlayer } from '@/components/AudioPlayer';
+import { MeetingAudioPlayer } from '@/components/MeetingAudioPlayer';
 import Analytics from '@/lib/analytics';
 import { MapPin, Pencil, Tags, Users, XCircle } from 'lucide-react';
 import { RefObject, useMemo, useState } from 'react';
@@ -283,7 +283,7 @@ export function SummaryPanel({
         </div>
 
         {hasRecording && (
-          <AudioPlayer meetingId={meeting.id} hasRecording={hasRecording} />
+          <MeetingAudioPlayer meetingId={meeting.id} hasRecording={hasRecording} />
         )}
 
         {aiSummary && !isSummaryLoading && (

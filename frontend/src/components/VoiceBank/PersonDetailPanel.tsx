@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { voiceBankApiService } from '@/services/voiceBankApiService';
 import type { Person, VoiceprintMeta, VoiceprintSample } from '@/types/voiceBank';
 import { ArrowLeft, Edit2, Play, RefreshCw, Trash2, Upload, X } from 'lucide-react';
+import { SampleAudioPlayer } from './SampleAudioPlayer';
 
 type AudioFileInfo = {
   path: string;
@@ -133,35 +134,6 @@ export function PersonDetailPanel({
         description: err instanceof Error ? err.message : String(err),
       });
       setBusy(false);
-    }
-  };
-
-  const playSample = async (sampleId: string) => {
-    if (playingSampleId === sampleId) {
-      setPlayingSampleId(null);
-      return;
-    }
-    try {
-      setPlayingSampleId(sampleId);
-      const bytes = await voiceBankApiService.getSampleAudio(personId, sampleId);
-      const blob = new Blob([bytes as unknown as BlobPart], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => {
-        setPlayingSampleId(null);
-        URL.revokeObjectURL(url);
-      };
-      audio.onerror = () => {
-        setPlayingSampleId(null);
-        URL.revokeObjectURL(url);
-        toast.error('Failed to play audio');
-      };
-      await audio.play();
-    } catch (err) {
-      setPlayingSampleId(null);
-      toast.error('Failed to load audio', {
-        description: err instanceof Error ? err.message : String(err),
-      });
     }
   };
 
@@ -334,38 +306,47 @@ export function PersonDetailPanel({
             {samples.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                className="flex flex-col gap-2 px-4 py-3 text-sm"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="font-mono text-xs text-gray-500 truncate" title={s.audio_path}>
-                    {s.audio_path.split('/').pop()}
-                  </p>
-                  <p className="text-gray-600 mt-0.5">
-                    {s.duration_s > 0 ? `${s.duration_s.toFixed(1)}s` : 'duration unknown'} ·{' '}
-                    {s.source}
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-xs text-gray-500 truncate" title={s.audio_path}>
+                      {s.audio_path.split('/').pop()}
+                    </p>
+                    <p className="text-gray-600 mt-0.5">
+                      {s.duration_s > 0 ? `${s.duration_s.toFixed(1)}s` : 'duration unknown'} ·{' '}
+                      {s.source}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPlayingSampleId(playingSampleId === s.id ? null : s.id)}
+                      disabled={busy}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-50"
+                      aria-label={playingSampleId === s.id ? 'Close player' : 'Play sample'}
+                      title={playingSampleId === s.id ? 'Close' : 'Play'}
+                    >
+                      <Play className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteSample(s.id)}
+                      disabled={busy}
+                      className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-50"
+                      aria-label="Delete sample"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => void playSample(s.id)}
-                    disabled={busy || (playingSampleId !== null && playingSampleId !== s.id)}
-                    className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-50"
-                    aria-label={playingSampleId === s.id ? 'Stop playing' : 'Play sample'}
-                    title={playingSampleId === s.id ? 'Stop' : 'Play'}
-                  >
-                    <Play className="w-4 h-4" fill={playingSampleId === s.id ? 'currentColor' : 'none'} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteSample(s.id)}
-                    disabled={busy}
-                    className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-50"
-                    aria-label="Delete sample"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {playingSampleId === s.id && (
+                  <SampleAudioPlayer
+                    personId={personId}
+                    sampleId={s.id}
+                    className="mt-1"
+                  />
+                )}
               </li>
             ))}
           </ul>
