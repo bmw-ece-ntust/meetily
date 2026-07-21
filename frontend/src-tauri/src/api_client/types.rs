@@ -93,6 +93,33 @@ pub struct UpdateMeetingRequest {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub participants: Option<Vec<String>>,
+    /// Empty string clears the field on the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    /// Empty string clears the field on the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organizer: Option<String>,
+}
+
+/// Bulk rename diarization speaker labels on the latest transcript version.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RenameSpeakersRequest {
+    pub mapping: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RenameSpeakersResponse {
+    pub updated_segments: u64,
+    pub mapping: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateSummaryRequest {
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
 // ============================================================================
@@ -160,7 +187,115 @@ pub struct TranscriptSegment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identify_confidence: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refined_text: Option<String>,
+}
+
+// ============================================================================
+// Voice bank / persons
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePersonRequest {
+    pub name: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdatePersonRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aliases: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListPersonsResponse {
+    pub persons: Vec<Person>,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintSample {
+    pub id: String,
+    pub person_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voiceprint_id: Option<String>,
+    pub audio_path: String,
+    pub duration_s: f64,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meeting_id: Option<String>,
+    #[serde(default)]
+    pub segment_ids: Vec<u32>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListVoiceprintSamplesResponse {
+    pub samples: Vec<VoiceprintSample>,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintMetaResponse {
+    pub id: String,
+    pub person_id: String,
+    pub model: String,
+    pub dim: u32,
+    pub enrolled_from: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListVoiceprintsResponse {
+    pub voiceprints: Vec<VoiceprintMetaResponse>,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebuildVoiceprintResponse {
+    pub rebuilt: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voiceprint: Option<VoiceprintMetaResponse>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerIdentityResponse {
+    pub diar_label: String,
+    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+    pub speech_s: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentifySpeakersResponse {
+    pub meeting_id: String,
+    pub updated_segments: u64,
+    pub matched: u32,
+    pub guests: u32,
+    pub skipped: u32,
+    pub identities: Vec<SpeakerIdentityResponse>,
 }
 
 /// Matched transcript segment from global search.

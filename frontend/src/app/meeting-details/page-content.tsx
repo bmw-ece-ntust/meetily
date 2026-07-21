@@ -65,14 +65,17 @@ export default function PageContent({
 
   const { loadTemplateSummary } = summaryGeneration;
 
+  const setSummaryTemplate = meetingData.setSummaryTemplate;
+
   const handleTemplateSelect = useCallback(
     async (templateId: string) => {
       setSelectedTemplate(templateId);
+      setSummaryTemplate(templateId);
       Analytics.trackButtonClick('select_summary_template', 'meeting_details');
       // Load existing summary for this template; if missing, clear UI so user can generate
       await loadTemplateSummary(templateId);
     },
-    [loadTemplateSummary]
+    [loadTemplateSummary, setSummaryTemplate]
   );
 
   const [transcriptMode, setTranscriptMode] = useState<'raw' | 'refined'>('raw');
@@ -206,6 +209,10 @@ export default function PageContent({
         <SummaryPanel
           meeting={meeting}
           meetingTitle={meetingData.meetingTitle}
+          participants={meetingData.participants}
+          location={meetingData.location}
+          organizer={meetingData.organizer}
+          meetingDate={meetingData.meetingDate}
           summaryRef={meetingData.blockNoteSummaryRef}
           onCopySummary={copyOperations.handleCopySummary}
           aiSummary={meetingData.aiSummary}
@@ -225,7 +232,19 @@ export default function PageContent({
             void handleTemplateSelect(templateId);
           }}
           onSummaryChange={meetingData.setAiSummary}
-          onDirtyChange={() => {}}
+          onDirtyChange={meetingData.setIsSummaryDirty}
+          isSummaryDirty={meetingData.isSummaryDirty}
+          isSavingSummary={meetingData.isSaving}
+          onSaveSummaryClick={async () => {
+            if (meetingData.blockNoteSummaryRef.current) {
+              await meetingData.blockNoteSummaryRef.current.saveSummary();
+            }
+          }}
+          onSaveTitle={(title) => meetingData.handleSaveMeetingTitle(title)}
+          onSaveParticipants={(list) => meetingData.handleSaveParticipants(list)}
+          onSaveMeetingDetails={(fields) => meetingData.handleSaveMeetingDetails(fields)}
+          onRenameSpeakers={(mapping) => meetingData.handleRenameSpeakers(mapping)}
+          onIdentifySpeakers={meetingData.handleIdentifySpeakers}
           summaryError={summaryGeneration.summaryError}
           getSummaryStatusMessage={(status) =>
             summaryGeneration.isLoadingTemplate

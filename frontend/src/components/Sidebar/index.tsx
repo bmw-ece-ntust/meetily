@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, NotebookPen, SearchIcon, X, Upload, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, NotebookPen, SearchIcon, X, Upload, RefreshCw, Users } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -387,6 +387,10 @@ const Sidebar: React.FC = () => {
       await invoke('update_meeting', {
         id: meetingId,
         title: newTitle,
+        participants: null,
+        date: null,
+        location: null,
+        organizer: null,
       });
 
       // Update local state
@@ -449,6 +453,7 @@ const Sidebar: React.FC = () => {
 
     const isHomePage = pathname === '/';
     const isMeetingPage = pathname?.includes('/meeting-details');
+    const isVoiceBankPage = pathname === '/voice-bank';
     const isSettingsPage = pathname === '/settings';
 
     return (
@@ -519,6 +524,21 @@ const Sidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>Meeting Notes</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => router.push('/voice-bank')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${isVoiceBankPage ? 'bg-gray-100' : 'hover:bg-gray-100'
+                  }`}
+              >
+                <Users className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Voice Bank</p>
             </TooltipContent>
           </Tooltip>
 
@@ -704,13 +724,22 @@ const Sidebar: React.FC = () => {
           {/* Fixed navigation items */}
           <div className="flex-shrink-0">
             {!isCollapsed && (
-              <div
-                onClick={() => router.push('/')}
-                className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-3 rounded-lg cursor-pointer"
-              >
-                <Home className="w-4 h-4 mr-2" />
-                <span>Home</span>
-              </div>
+              <>
+                <div
+                  onClick={() => router.push('/')}
+                  className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-3 rounded-lg cursor-pointer"
+                >
+                  <Home className="w-4 h-4 mr-2" />
+                  <span>Home</span>
+                </div>
+                <div
+                  onClick={() => router.push('/voice-bank')}
+                  className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-2 rounded-lg cursor-pointer"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  <span>Voice Bank</span>
+                </div>
+              </>
             )}
           </div>
 

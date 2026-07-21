@@ -148,24 +148,315 @@ pub async fn get_meeting(
 pub async fn update_meeting(
     id: String,
     title: Option<String>,
+    #[allow(unused_mut)]
+    mut participants: Option<Vec<String>>,
+    date: Option<String>,
+    location: Option<String>,
+    organizer: Option<String>,
     client: State<'_, Arc<RwLock<ApiClient>>>,
     cache: State<'_, Arc<MemoryCache>>,
 ) -> Result<CommandResult<Meeting>, String> {
     use crate::api_client::types::UpdateMeetingRequest;
-    
+    use chrono::{DateTime, Utc};
+
+    // Normalize empty optional title from frontend nulls that arrive as Some("")
+    let title = title.and_then(|t| {
+        let t = t.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    });
+    if let Some(list) = participants.as_mut() {
+        *list = list
+            .iter()
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .collect();
+    }
+
+    let parsed_date: Option<DateTime<Utc>> = match date {
+        None => None,
+        Some(s) => {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                match DateTime::parse_from_rfc3339(s) {
+                    Ok(dt) => Some(dt.with_timezone(&Utc)),
+                    Err(e) => {
+                        return Ok(CommandResult::error(format!(
+                            "Invalid date (expected RFC3339): {}",
+                            e
+                        )));
+                    }
+                }
+            }
+        }
+    };
+
+    // location/organizer: Some("") clears on server; None leaves unchanged
+    let location = location.map(|s| s.trim().to_string());
+    let organizer = organizer.map(|s| s.trim().to_string());
+
+    if title.is_none()
+        && participants.is_none()
+        && parsed_date.is_none()
+        && location.is_none()
+        && organizer.is_none()
+    {
+        return Ok(CommandResult::error(
+            "At least one of title, date, participants, location, or organizer must be provided"
+                .to_string(),
+        ));
+    }
+
     let request = UpdateMeetingRequest {
         title,
-        date: None,
+        date: parsed_date,
+        participants,
+        location,
+        organizer,
     };
-    
+
     let client = client.read().await;
     match client.update_meeting(&id, request).await {
         Ok(meeting) => {
-            // Update cache
             cache.set_meeting(meeting.clone()).await;
             Ok(CommandResult::success(meeting))
         }
         Err(e) => Ok(CommandResult::error(format!("Failed to update meeting: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn rename_meeting_speakers(
+    id: String,
+    mapping: std::collections::HashMap<String, String>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+    cache: State<'_, Arc<MemoryCache>>,
+) -> Result<CommandResult<RenameSpeakersResponse>, String> {
+    if mapping.is_empty() {
+        return Ok(CommandResult::error(
+            "mapping must contain at least one entry".to_string(),
+        ));
+    }
+
+    let cleaned: std::collections::HashMap<String, String> = mapping
+        .into_iter()
+        .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+        .filter(|(k, v)| !k.is_empty() && !v.is_empty())
+        .collect();
+
+    if cleaned.is_empty() {
+        return Ok(CommandResult::error(
+            "mapping must contain at least one non-empty rename".to_string(),
+        ));
+    }
+
+    let request = RenameSpeakersRequest { mapping: cleaned };
+    let client = client.read().await;
+    match client.rename_speakers(&id, request).await {
+        Ok(response) => {
+            // Speaker labels live on transcript segments; drop cached transcript so next
+            // fetch reflects renames. Meeting cache is unchanged.
+            cache.remove_transcript(&id).await;
+            Ok(CommandResult::success(response))
+        }
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to rename speakers: {}",
+            e
+        ))),
+    }
+}
+
+#[tauri::command]
+pub async fn identify_meeting_speakers(
+    id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+    cache: State<'_, Arc<MemoryCache>>,
+) -> Result<CommandResult<IdentifySpeakersResponse>, String> {
+    let client = client.read().await;
+    match client.identify_speakers(&id).await {
+        Ok(response) => {
+            cache.remove_transcript(&id).await;
+            Ok(CommandResult::success(response))
+        }
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to identify speakers: {}",
+            e
+        ))),
+    }
+}
+
+// ============================================================================
+// Voice bank / persons
+// ============================================================================
+
+#[tauri::command]
+pub async fn list_persons(
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<ListPersonsResponse>, String> {
+    let client = client.read().await;
+    match client.list_persons().await {
+        Ok(r) => Ok(CommandResult::success(r)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to list persons: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn create_person(
+    name: String,
+    aliases: Option<Vec<String>>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<Person>, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Ok(CommandResult::error("Person name cannot be empty".into()));
+    }
+    let request = CreatePersonRequest {
+        name,
+        aliases: aliases.unwrap_or_default(),
+    };
+    let client = client.read().await;
+    match client.create_person(request).await {
+        Ok(p) => Ok(CommandResult::success(p)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to create person: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn get_person(
+    id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<Person>, String> {
+    let client = client.read().await;
+    match client.get_person(&id).await {
+        Ok(p) => Ok(CommandResult::success(p)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to get person: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn update_person(
+    id: String,
+    name: Option<String>,
+    aliases: Option<Vec<String>>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<Person>, String> {
+    let request = UpdatePersonRequest { name, aliases };
+    let client = client.read().await;
+    match client.update_person(&id, request).await {
+        Ok(p) => Ok(CommandResult::success(p)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to update person: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn delete_person(
+    id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<bool>, String> {
+    let client = client.read().await;
+    match client.delete_person(&id).await {
+        Ok(()) => Ok(CommandResult::success(true)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to delete person: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn list_person_samples(
+    person_id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<ListVoiceprintSamplesResponse>, String> {
+    let client = client.read().await;
+    match client.list_person_samples(&person_id).await {
+        Ok(r) => Ok(CommandResult::success(r)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to list samples: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn add_person_sample(
+    person_id: String,
+    file_path: String,
+    duration_s: Option<f64>,
+    meeting_id: Option<String>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<VoiceprintSample>, String> {
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Ok(CommandResult::error(format!(
+            "File not found: {}",
+            file_path
+        )));
+    }
+    let client = client.read().await;
+    match client
+        .add_person_sample(&person_id, &path, duration_s, meeting_id)
+        .await
+    {
+        Ok(s) => Ok(CommandResult::success(s)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to add sample: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn delete_person_sample(
+    person_id: String,
+    sample_id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<bool>, String> {
+    let client = client.read().await;
+    match client.delete_person_sample(&person_id, &sample_id).await {
+        Ok(()) => Ok(CommandResult::success(true)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to delete sample: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn rebuild_person_voiceprint(
+    person_id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<RebuildVoiceprintResponse>, String> {
+    let client = client.read().await;
+    match client.rebuild_voiceprint(&person_id).await {
+        Ok(r) => Ok(CommandResult::success(r)),
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to rebuild voiceprint: {}",
+            e
+        ))),
+    }
+}
+
+#[tauri::command]
+pub async fn list_voiceprints(
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<ListVoiceprintsResponse>, String> {
+    let client = client.read().await;
+    match client.list_voiceprints().await {
+        Ok(r) => Ok(CommandResult::success(r)),
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to list voiceprints: {}",
+            e
+        ))),
+    }
+}
+
+/// Download meeting recording as bytes for playback.
+#[tauri::command]
+pub async fn get_meeting_recording(
+    meeting_id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<Vec<u8>>, String> {
+    let client = client.read().await;
+    match client.get_recording(&meeting_id).await {
+        Ok(bytes) => Ok(CommandResult::success(bytes)),
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to download recording: {}",
+            e
+        ))),
     }
 }
 

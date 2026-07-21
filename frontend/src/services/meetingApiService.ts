@@ -194,8 +194,37 @@ export const meetingApiService = {
     return summary ? summaryToMarkdown(summary) : null;
   },
 
-  async updateMeeting(id: string, title: string): Promise<ApiMeeting> {
-    return unwrap<ApiMeeting>(invoke('update_meeting', { id, title }), 'Failed to update meeting');
+  async updateMeeting(
+    id: string,
+    fields: {
+      title?: string | null;
+      participants?: string[] | null;
+      date?: string | null;
+      location?: string | null;
+      organizer?: string | null;
+    }
+  ): Promise<ApiMeeting> {
+    return unwrap<ApiMeeting>(
+      invoke('update_meeting', {
+        id,
+        title: fields.title ?? null,
+        participants: fields.participants ?? null,
+        date: fields.date ?? null,
+        location: fields.location ?? null,
+        organizer: fields.organizer ?? null,
+      }),
+      'Failed to update meeting'
+    );
+  },
+
+  async renameSpeakers(
+    id: string,
+    mapping: Record<string, string>
+  ): Promise<{ updated_segments: number; mapping: Record<string, string> }> {
+    return unwrap(
+      invoke('rename_meeting_speakers', { id, mapping }),
+      'Failed to rename speakers'
+    );
   },
 
   async deleteMeeting(id: string): Promise<void> {

@@ -14,9 +14,14 @@ interface MeetingDetailsResponse {
   title: string;
   created_at: string;
   updated_at: string;
+  date?: string | null;
   transcripts: Transcript[];
   refinedText: string | null;
   folder_path?: string;
+  participants?: string[];
+  location?: string | null;
+  organizer?: string | null;
+  audio_file?: string | null;
 }
 
 function MeetingDetailsContent() {
@@ -50,9 +55,14 @@ function MeetingDetailsContent() {
         title: meeting.title,
         created_at: meeting.created_at,
         updated_at: meeting.updated_at,
+        date: meeting.date ?? null,
         transcripts: segments,
         refinedText,
         folder_path: meeting.folder_path,
+        participants: Array.isArray(meeting.participants) ? meeting.participants : [],
+        location: meeting.location ?? null,
+        organizer: meeting.organizer ?? null,
+        audio_file: meeting.audio_file ?? null,
       });
 
       try {

@@ -15,7 +15,7 @@ const Editor = dynamic(() => import('../BlockNoteEditor/Editor'), { ssr: false }
 
 interface BlockNoteSummaryViewProps {
   summaryData: SummaryDataResponse | Summary | null;
-  onSave?: (data: { markdown?: string; summary_json?: BlockNoteBlock[] }) => void;
+  onSave?: (data: { markdown?: string; summary_json?: BlockNoteBlock[] }) => void | Promise<void>;
   onSummaryChange?: (summary: Summary) => void;
   status?: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
   error?: string | null;
@@ -134,36 +134,50 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
   }, [isDirty, onDirtyChange]);
 
   const handleSave = useCallback(async () => {
-    if (!onSave || !isDirty) return;
+    if (!onSave) return;
 
     setIsSaving(true);
     try {
       console.log('💾 Saving BlockNote content...');
 
+      // Prefer live editor document (markdown path); fall back to tracked blocks.
+      const blocks =
+        format === 'markdown' && editor?.document?.length
+          ? editor.document
+          : currentBlocks.length
+            ? currentBlocks
+            : editor?.document || [];
+
       // Generate markdown from current blocks; preserve BlockNote JSON even if markdown conversion fails.
-      const markdownResult = await blocksToMarkdownSafely(editor, currentBlocks, {
+      const markdownResult = await blocksToMarkdownSafely(editor, blocks, {
         source: 'BlockNoteSummaryView.handleSave',
       });
 
       const saveData: { markdown?: string; summary_json?: BlockNoteBlock[] } = {
-        summary_json: currentBlocks as unknown as BlockNoteBlock[]
+        summary_json: blocks as unknown as BlockNoteBlock[]
       };
 
       if (markdownResult.markdown !== undefined) {
         saveData.markdown = markdownResult.markdown;
+      } else if (format === 'markdown' && data?.markdown) {
+        saveData.markdown = data.markdown;
       }
 
-      onSave(saveData);
+      if (!saveData.markdown?.trim()) {
+        throw new Error('Nothing to save — summary is empty');
+      }
+
+      await onSave(saveData);
 
       setIsDirty(false);
       console.log('✅ Save successful');
     } catch (err) {
       console.error('❌ Save failed:', err);
-      alert('Failed to save changes. Please try again.');
+      throw err;
     } finally {
       setIsSaving(false);
     }
-  }, [onSave, isDirty, currentBlocks, editor]);
+  }, [onSave, currentBlocks, editor, format, data]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -245,7 +259,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
               console.log('📝 Editor blocks changed:', blocks.length);
               handleEditorChange(blocks);
             }}
-            editable={false}
+            editable={true}
           />
         </div>
       </div>
@@ -260,7 +274,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
         <div className="w-full">
           <BlockNoteView
             editor={editor}
-            editable={false}
+            editable={true}
             onChange={() => {
               if (isContentLoaded.current) {
                 handleEditorChange(editor.document);

@@ -25,25 +25,68 @@ pub struct ProcessTranscriptResponse {
     pub process_id: String,
 }
 
-/// Saves a meeting summary - now handled by backend API
-/// This command is deprecated and returns success without doing anything
-/// Summaries are automatically persisted by ai-meeting-agent backend
+/// Saves (overwrites) a meeting summary via PUT /meetings/{id}/summary/{template}.
 #[tauri::command]
 pub async fn api_save_meeting_summary<R: Runtime>(
     _app: AppHandle<R>,
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     meeting_id: String,
-    _summary: serde_json::Value,
+    summary: serde_json::Value,
+    template: Option<String>,
     _auth_token: Option<String>,
 ) -> Result<serde_json::Value, String> {
     log_info!(
-        "api_save_meeting_summary called for meeting_id: {} (backend handles persistence)",
+        "api_save_meeting_summary called for meeting_id: {}",
         meeting_id
     );
-    
-    Ok(serde_json::json!({
-        "message": "Summary managed by backend API"
-    }))
+
+    let content = summary
+        .get("markdown")
+        .and_then(|v| v.as_str())
+        .or_else(|| summary.get("content").and_then(|v| v.as_str()))
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            "Summary payload must include markdown or content string".to_string()
+        })?;
+
+    if content.trim().is_empty() {
+        return Err("Summary content cannot be empty".to_string());
+    }
+
+    let template = match template.as_deref().unwrap_or("full") {
+        "key_points" => crate::api_client::types::SummaryTemplate::KeyPoints,
+        "action_items" => crate::api_client::types::SummaryTemplate::ActionItems,
+        "decisions" => crate::api_client::types::SummaryTemplate::Decisions,
+        "meeting_notes" => crate::api_client::types::SummaryTemplate::MeetingNotes,
+        _ => crate::api_client::types::SummaryTemplate::Full,
+    };
+
+    let request = crate::api_client::types::UpdateSummaryRequest {
+        content: content.clone(),
+        format: Some("markdown".to_string()),
+    };
+
+    let client = state.api_client.read().await;
+    match client.update_summary(&meeting_id, &template, request).await {
+        Ok(saved) => {
+            // Refresh cache list for this meeting
+            if let Ok(list) = client.list_summaries(&meeting_id).await {
+                state
+                    .memory_cache
+                    .set_summaries(meeting_id.clone(), list.summaries)
+                    .await;
+            }
+            Ok(serde_json::json!({
+                "message": "Summary saved",
+                "id": saved.id,
+                "content": saved.content,
+            }))
+        }
+        Err(e) => {
+            log_error!("Failed to save summary for meeting {}: {}", meeting_id, e);
+            Err(format!("Failed to save summary: {}", e))
+        }
+    }
 }
 
 /// Detects the dominant supported summary language from transcript segments.

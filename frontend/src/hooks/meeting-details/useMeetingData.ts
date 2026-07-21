@@ -4,6 +4,7 @@ import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummary
 import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import { voiceBankApiService } from '@/services/voiceBankApiService';
 
 interface UseMeetingDataProps {
   meeting: any;
@@ -19,9 +20,22 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
   const [meetingTitle, setMeetingTitle] = useState(meeting?.title || '+ New Call');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isTitleDirty, setIsTitleDirty] = useState(false);
+  const [participants, setParticipants] = useState<string[]>(
+    Array.isArray(meeting?.participants) ? meeting.participants : []
+  );
+  const [location, setLocation] = useState<string | null>(
+    meeting?.location ?? null
+  );
+  const [organizer, setOrganizer] = useState<string | null>(
+    meeting?.organizer ?? null
+  );
+  const [meetingDate, setMeetingDate] = useState<string | null>(
+    meeting?.date ?? meeting?.created_at ?? null
+  );
   const [aiSummary, setAiSummary] = useState<Summary | null>(summaryData);
   const [isSaving, setIsSaving] = useState(false);
-  const [, setIsSummaryDirty] = useState(false);
+  const [isSummaryDirty, setIsSummaryDirty] = useState(false);
+  const [summaryTemplate, setSummaryTemplate] = useState<string>('full');
   const [, setError] = useState<string>('');
 
   // Ref for BlockNoteSummaryView
@@ -36,6 +50,27 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     setAiSummary(summaryData);
   }, [summaryData]); // Only trigger when parent prop changes, not when aiSummary changes
 
+  useEffect(() => {
+    if (meeting?.title) {
+      setMeetingTitle(meeting.title);
+      setIsTitleDirty(false);
+    }
+    if (Array.isArray(meeting?.participants)) {
+      setParticipants(meeting.participants);
+    }
+    setLocation(meeting?.location ?? null);
+    setOrganizer(meeting?.organizer ?? null);
+    setMeetingDate(meeting?.date ?? meeting?.created_at ?? null);
+  }, [
+    meeting?.id,
+    meeting?.title,
+    meeting?.participants,
+    meeting?.location,
+    meeting?.organizer,
+    meeting?.date,
+    meeting?.created_at,
+  ]);
+
   // Handlers
   const handleTitleChange = useCallback((newTitle: string) => {
     setMeetingTitle(newTitle);
@@ -46,25 +81,43 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     setAiSummary(newSummary);
   }, []);
 
-  const handleSaveMeetingTitle = useCallback(async () => {
+  const handleSaveMeetingTitle = useCallback(async (titleOverride?: string) => {
+    const titleToSave = (titleOverride ?? meetingTitle).trim();
+    if (!titleToSave) {
+      toast.error('Meeting title cannot be empty');
+      return false;
+    }
     try {
-      await invokeTauri('update_meeting', {
+      const result = await invokeTauri<{ success: boolean; error?: string }>('update_meeting', {
         id: meeting.id,
-        title: meetingTitle,
+        title: titleToSave,
+        participants: null,
+        date: null,
+        location: null,
+        organizer: null,
       });
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Failed to update meeting title');
+      }
 
       console.log('Save meeting title success');
+      setMeetingTitle(titleToSave);
       setIsTitleDirty(false);
 
       // Update meetings with new title
       const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) =>
-        m.id === meeting.id ? { id: m.id, title: meetingTitle } : m
+        m.id === meeting.id ? { id: m.id, title: titleToSave } : m
       );
       setMeetings(updatedMeetings);
-      setCurrentMeeting({ id: meeting.id, title: meetingTitle });
+      setCurrentMeeting({ id: meeting.id, title: titleToSave });
+      if (onMeetingUpdated) await onMeetingUpdated();
+      toast.success('Meeting title updated');
       return true;
     } catch (error) {
       console.error('Failed to save meeting title:', error);
+      toast.error('Failed to update meeting title', {
+        description: error instanceof Error ? error.message : String(error),
+      });
       if (error instanceof Error) {
         setError(error.message);
       } else {
@@ -72,7 +125,134 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
       }
       return false;
     }
-  }, [meeting.id, meetingTitle, sidebarMeetings, setMeetings, setCurrentMeeting]);
+  }, [meeting.id, meetingTitle, sidebarMeetings, setMeetings, setCurrentMeeting, onMeetingUpdated]);
+
+  const handleSaveParticipants = useCallback(async (next: string[]) => {
+    const cleaned = next.map((n) => n.trim()).filter(Boolean);
+    try {
+      const result = await invokeTauri<{ success: boolean; error?: string; data?: { participants?: string[] } }>(
+        'update_meeting',
+        {
+          id: meeting.id,
+          title: null,
+          participants: cleaned,
+          date: null,
+          location: null,
+          organizer: null,
+        }
+      );
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Failed to update participants');
+      }
+      const saved = result?.data?.participants ?? cleaned;
+      setParticipants(saved);
+      if (onMeetingUpdated) await onMeetingUpdated();
+      toast.success('Participants updated');
+      return true;
+    } catch (error) {
+      console.error('Failed to save participants:', error);
+      toast.error('Failed to update participants', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }, [meeting.id, onMeetingUpdated]);
+
+  const handleSaveMeetingDetails = useCallback(
+    async (fields: {
+      date?: string | null;
+      location?: string | null;
+      organizer?: string | null;
+    }) => {
+      try {
+        const result = await invokeTauri<{
+          success: boolean;
+          error?: string;
+          data?: {
+            date?: string;
+            location?: string | null;
+            organizer?: string | null;
+          };
+        }>('update_meeting', {
+          id: meeting.id,
+          title: null,
+          participants: null,
+          date: fields.date ?? null,
+          location: fields.location !== undefined ? fields.location ?? '' : null,
+          organizer: fields.organizer !== undefined ? fields.organizer ?? '' : null,
+        });
+        if (result && result.success === false) {
+          throw new Error(result.error || 'Failed to update meeting details');
+        }
+        if (result?.data?.date) setMeetingDate(result.data.date);
+        else if (fields.date) setMeetingDate(fields.date);
+        if (fields.location !== undefined) {
+          setLocation(result?.data?.location ?? fields.location);
+        }
+        if (fields.organizer !== undefined) {
+          setOrganizer(result?.data?.organizer ?? fields.organizer);
+        }
+        if (onMeetingUpdated) await onMeetingUpdated();
+        toast.success('Meeting details updated');
+        return true;
+      } catch (error) {
+        console.error('Failed to save meeting details:', error);
+        toast.error('Failed to update meeting details', {
+          description: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      }
+    },
+    [meeting.id, onMeetingUpdated]
+  );
+
+  const handleRenameSpeakers = useCallback(
+    async (mapping: Record<string, string>) => {
+      try {
+        const result = await invokeTauri<{
+          success: boolean;
+          error?: string;
+          data?: { updated_segments?: number };
+        }>('rename_meeting_speakers', {
+          id: meeting.id,
+          mapping,
+        });
+        if (result && result.success === false) {
+          throw new Error(result.error || 'Failed to rename speakers');
+        }
+        if (onMeetingUpdated) await onMeetingUpdated();
+        const n = result?.data?.updated_segments ?? 0;
+        toast.success(n > 0 ? `Renamed speakers (${n} segments)` : 'Speakers renamed');
+        return true;
+      } catch (error) {
+        console.error('Failed to rename speakers:', error);
+        toast.error('Failed to rename speakers', {
+          description: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      }
+    },
+    [meeting.id, onMeetingUpdated]
+  );
+
+  const handleIdentifySpeakers = useCallback(async () => {
+    try {
+      const result = await voiceBankApiService.identifySpeakers(meeting.id);
+      if (onMeetingUpdated) await onMeetingUpdated();
+      const parts: string[] = [];
+      if (result.matched > 0) parts.push(`${result.matched} matched`);
+      if (result.guests > 0) parts.push(`${result.guests} guests`);
+      if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
+      toast.success(`Identified speakers (${result.updated_segments} segments): ${parts.join(', ')}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to identify speakers:', error);
+      toast.error('Failed to identify speakers', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }, [meeting.id, onMeetingUpdated]);
 
   const handleSaveSummary = useCallback(async (summary: Summary | { markdown?: string; summary_json?: any[] }) => {
     console.log('📄 handleSaveSummary called with:', {
@@ -81,6 +261,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
       summaryKeys: Object.keys(summary)
     });
 
+    setIsSaving(true);
     try {
       let formattedSummary: any;
 
@@ -104,18 +285,27 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
       await invokeTauri('api_save_meeting_summary', {
         meetingId: meeting.id,
         summary: formattedSummary,
+        template: summaryTemplate,
       });
 
+      setIsSummaryDirty(false);
       console.log('✅ Save meeting summary success');
+      toast.success('Summary saved');
     } catch (error) {
       console.error('❌ Failed to save meeting summary:', error);
+      toast.error('Failed to save summary', {
+        description: error instanceof Error ? error.message : String(error),
+      });
       if (error instanceof Error) {
         setError(error.message);
       } else {
         setError('Failed to save meeting summary: Unknown error');
       }
+      throw error;
+    } finally {
+      setIsSaving(false);
     }
-  }, [meeting.id, meetingTitle]);
+  }, [meeting.id, meetingTitle, summaryTemplate]);
 
   const saveAllChanges = useCallback(async () => {
     setIsSaving(true);
@@ -129,7 +319,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
       if (blockNoteSummaryRef.current?.isDirty) {
         console.log('💾 Saving BlockNote editor changes...');
         await blockNoteSummaryRef.current.saveSummary();
-      } else if (aiSummary) {
+      } else if (aiSummary && isSummaryDirty) {
         await handleSaveSummary(aiSummary);
       }
 
@@ -140,7 +330,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     } finally {
       setIsSaving(false);
     }
-  }, [isTitleDirty, handleSaveMeetingTitle, aiSummary, handleSaveSummary]);
+  }, [isTitleDirty, handleSaveMeetingTitle, aiSummary, handleSaveSummary, isSummaryDirty]);
 
   // Update meeting title from external source (e.g., AI summary)
   const updateMeetingTitle = useCallback((newTitle: string) => {
@@ -159,8 +349,14 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     meetingTitle,
     isEditingTitle,
     isTitleDirty,
+    participants,
+    location,
+    organizer,
+    meetingDate,
     aiSummary,
     isSaving,
+    isSummaryDirty,
+    summaryTemplate,
     blockNoteSummaryRef,
 
     // Setters
@@ -168,12 +364,21 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
     setIsEditingTitle,
     setAiSummary,
     setIsSummaryDirty,
+    setParticipants,
+    setLocation,
+    setOrganizer,
+    setMeetingDate,
+    setSummaryTemplate,
 
     // Handlers
     handleTitleChange,
     handleSummaryChange,
     handleSaveSummary,
     handleSaveMeetingTitle,
+    handleSaveParticipants,
+    handleSaveMeetingDetails,
+    handleRenameSpeakers,
+    handleIdentifySpeakers,
     saveAllChanges,
     updateMeetingTitle,
   };
