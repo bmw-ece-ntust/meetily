@@ -95,11 +95,19 @@ export function EditSpeakerLabelsDialog({
             <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
               {unique.map((label) => {
                 const locked = isLocked(label);
+                const segment = transcripts.find(t => t.speaker === label);
+                const currentDisplay = segment?.display_name;
+                
                 return (
                   <div key={label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                    <span className="text-sm font-mono text-gray-600 truncate" title={label}>
+                    <div className="text-sm font-mono text-gray-600 truncate" title={label}>
                       {label}
-                    </span>
+                      {currentDisplay && currentDisplay !== label && (
+                        <span className="text-xs text-gray-500 block">
+                          → {currentDisplay}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-gray-400 text-sm">→</span>
                     <div className="relative">
                       <input

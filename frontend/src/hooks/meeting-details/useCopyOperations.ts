@@ -71,9 +71,10 @@ export function useCopyOperations({
       fullTranscript = allTranscripts
         .map((t) => {
           const time = formatTime(t.audio_start_time, t.timestamp);
-          const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
+          const speaker = t.display_name?.trim() || t.speaker?.trim();
+          const speakerPrefix = speaker ? `${speaker}: ` : '';
           const text = t.refined_text?.trim() || t.text;
-          return `${time} ${speaker}${text}  `;
+          return `${time} ${speakerPrefix}${text}  `;
         })
         .join('\n');
       mode = 'refined';
@@ -92,8 +93,9 @@ export function useCopyOperations({
       fullTranscript = allTranscripts
         .map((t) => {
           const time = formatTime(t.audio_start_time, t.timestamp);
-          const speaker = t.speaker?.trim() ? `${t.speaker.trim()}: ` : '';
-          return `${time} ${speaker}${t.text}  `;
+          const speaker = t.display_name?.trim() || t.speaker?.trim();
+          const speakerPrefix = speaker ? `${speaker}: ` : '';
+          return `${time} ${speakerPrefix}${t.text}  `;
         })
         .join('\n');
       mode = 'raw';

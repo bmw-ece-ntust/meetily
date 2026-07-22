@@ -22,6 +22,9 @@ type TranscriptSegment = {
   end: number;
   text: string;
   speaker?: string;
+  display_name?: string;
+  person_id?: string | null;
+  identify_confidence?: number | null;
   refined_text?: string | null;
 };
 
@@ -68,6 +71,9 @@ function transcriptFromSegments(segments: TranscriptSegment[] = []): Transcript[
     audio_end_time: segment.end,
     duration: segment.end - segment.start,
     speaker: segment.speaker,
+    display_name: segment.display_name,
+    person_id: segment.person_id,
+    identify_confidence: segment.identify_confidence,
     refined_text: segment.refined_text?.trim() || null,
   }));
 }
@@ -142,8 +148,27 @@ export const meetingApiService = {
     return data.job_id;
   },
 
-  async getJobStatus(jobId: string): Promise<{ state: string; error?: string | null }> {
+  async getJobStatus(jobId: string): Promise<{
+    state: string;
+    error?: string | null;
+    job_type?: string;
+    meeting_id?: string | null;
+    progress?: Array<{ stage?: string; message?: string; percent?: number | null }>;
+  }> {
     return unwrap(invoke('get_job_status', { jobId }), 'Failed to fetch job status');
+  },
+
+  async listJobs(): Promise<
+    Array<{
+      job_id: string;
+      job_type: string;
+      state: string;
+      meeting_id?: string | null;
+      error?: string | null;
+      progress?: Array<{ stage?: string; message?: string; percent?: number | null }>;
+    }>
+  > {
+    return unwrap(invoke('list_jobs'), 'Failed to list jobs');
   },
 
   async getSummary(meetingId: string, template?: string | null): Promise<Summary | null> {

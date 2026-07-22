@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Transcript } from '@/types';
 import { TranscriptView } from '@/components/TranscriptView';
 import { TranscriptButtonGroup, TranscriptDisplayMode } from './TranscriptButtonGroup';
+import { useJobQueueOptional } from '@/contexts/JobQueueContext';
 import { CSSProperties } from 'react';
 
 const MODE_STORAGE_KEY = 'transcriptDisplayMode';
@@ -44,6 +46,21 @@ export function TranscriptPanel({
   style,
   className,
 }: TranscriptPanelProps) {
+  const jobQueue = useJobQueueOptional();
+  const identifyRunning = useMemo(() => {
+    if (!meetingId || !jobQueue) return false;
+    return jobQueue
+      .getJobsForMeeting(meetingId)
+      .some(
+        (j) =>
+          j.type === 'identify' &&
+          (j.state === 'queued' ||
+            j.state === 'starting' ||
+            j.state === 'pending' ||
+            j.state === 'processing')
+      );
+  }, [meetingId, jobQueue, jobQueue?.jobs]);
+
   const hasSegmentRefined = useMemo(
     () => transcripts.some((t) => Boolean(t.refined_text?.trim())),
     [transcripts]
@@ -110,6 +127,12 @@ export function TranscriptPanel({
       style={style}
     >
       <div className="p-4 border-b border-gray-200">
+        {identifyRunning && (
+          <div className="mb-3 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+            <span>Identifying speakers…</span>
+          </div>
+        )}
         <TranscriptButtonGroup
           transcriptCount={displayTranscripts?.length || 0}
           onCopyTranscript={onCopyTranscript}

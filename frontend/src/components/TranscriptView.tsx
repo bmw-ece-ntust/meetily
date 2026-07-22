@@ -403,16 +403,15 @@ interface SpeakerBadgeProps {
 
 function SpeakerBadge({ transcript, personNames }: SpeakerBadgeProps) {
   const router = useRouter();
-  const speaker = transcript.speaker?.trim();
+  const rawLabel = transcript.speaker?.trim();
+  const displayName = transcript.display_name?.trim() || rawLabel;
   const personId = transcript.person_id;
   const confidence = transcript.identify_confidence;
   
-  if (!speaker) return null;
+  if (!displayName) return null;
 
-  // Check if this speaker is identified from voice bank
-  const personName = personId ? personNames[personId] : null;
-  const isIdentified = !!personName;
-  const isGuest = personName?.startsWith('Guest-');
+  const isIdentified = !!personId;
+  const isGuest = displayName?.startsWith('Guest-');
 
   // Determine badge color and icon
   let badgeColor = 'bg-violet-100 text-violet-700'; // Manual label (default)
@@ -430,8 +429,6 @@ function SpeakerBadge({ transcript, personNames }: SpeakerBadgeProps) {
     }
   }
 
-  const displayName = personName || speaker;
-
   const handleClick = () => {
     if (isIdentified && !isGuest && personId) {
       // Navigate to voice bank person detail
@@ -447,7 +444,12 @@ function SpeakerBadge({ transcript, personNames }: SpeakerBadgeProps) {
       onClick={handleClick}
     >
       {Icon && <Icon className="w-3 h-3" />}
-      {displayName}
+      <span>
+        {displayName}
+        {rawLabel && rawLabel !== displayName && (
+          <span className="opacity-60 ml-1">({rawLabel})</span>
+        )}
+      </span>
     </span>
   );
 

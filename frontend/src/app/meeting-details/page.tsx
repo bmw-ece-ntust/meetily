@@ -1,6 +1,6 @@
 "use client"
 import { useSidebar } from "@/components/Sidebar/SidebarProvider";
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { Transcript, Summary } from "@/types";
 import PageContent from "./page-content";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,6 +8,7 @@ import Analytics from "@/lib/analytics";
 import { LoaderIcon } from "lucide-react";
 import { useConfig } from "@/contexts/ConfigContext";
 import { meetingApiService } from "@/services/meetingApiService";
+import { useJobQueueOptional } from "@/contexts/JobQueueContext";
 
 interface MeetingDetailsResponse {
   id: string;
@@ -31,12 +32,14 @@ function MeetingDetailsContent() {
   const { stopSummaryPolling } = useSidebar();
   const { isAutoSummary } = useConfig();
   const router = useRouter();
+  const jobQueue = useJobQueueOptional();
   const [meetingDetails, setMeetingDetails] = useState<MeetingDetailsResponse | null>(null);
   const [meetingSummary, setMeetingSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState<boolean>(false);
   const [hasCheckedAutoGen, setHasCheckedAutoGen] = useState<boolean>(false);
+  const identifyRefreshKey = useRef<string>('');
 
   const fetchMeetingData = useCallback(async () => {
     if (!meetingId || meetingId === 'intro-call') {
@@ -113,6 +116,19 @@ function MeetingDetailsContent() {
       if (meetingId) stopSummaryPolling(meetingId);
     };
   }, [meetingId, stopSummaryPolling]);
+
+  // Auto-refresh transcript when background identify job for this meeting completes.
+  useEffect(() => {
+    if (!meetingId || !jobQueue) return;
+    const identifyJobs = jobQueue.getJobsForMeeting(meetingId).filter((j) => j.type === 'identify');
+    const justCompleted = identifyJobs.some((j) => j.state === 'completed');
+    if (!justCompleted) return;
+    // Avoid refetch loops if completed job lingers in the list.
+    const key = identifyJobs.map((j) => `${j.id}:${j.state}`).join('|');
+    if (identifyRefreshKey.current === key) return;
+    identifyRefreshKey.current = key;
+    void fetchMeetingData();
+  }, [meetingId, jobQueue, jobQueue?.jobs, fetchMeetingData]);
 
   const handleAutoGenerateComplete = useCallback(() => {
     setShouldAutoGenerate(false);

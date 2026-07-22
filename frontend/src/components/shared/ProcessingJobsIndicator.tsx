@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Upload,
   ListTodo,
+  Users,
 } from 'lucide-react';
 import {
   useJobQueue,
@@ -26,6 +27,8 @@ function typeIcon(type: BackgroundJobType) {
       return RefreshCw;
     case 'import':
       return Upload;
+    case 'identify':
+      return Users;
   }
 }
 
@@ -37,6 +40,8 @@ function typeLabel(type: BackgroundJobType) {
       return 'Retranscribe';
     case 'import':
       return 'Import';
+    case 'identify':
+      return 'Identify';
   }
 }
 

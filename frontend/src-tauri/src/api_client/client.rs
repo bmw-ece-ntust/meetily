@@ -555,6 +555,15 @@ impl ApiClient {
     // Jobs
     // ========================================================================
 
+    pub async fn list_jobs(&self) -> ApiResult<Vec<JobStatusResponse>> {
+        let url = self.build_url("/jobs");
+        let builder = self.client.get(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+
+        self.handle_response(response).await
+    }
+
     pub async fn get_job_status(&self, job_id: &str) -> ApiResult<JobStatusResponse> {
         let url = self.build_url(&format!("/jobs/{}/status", job_id));
         let builder = self.client.get(&url);

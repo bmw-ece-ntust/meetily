@@ -186,6 +186,9 @@ pub struct TranscriptSegment {
     pub no_speech_prob: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
+    /// Voice-bank person name from API JOIN (Alice, Guest-1); not stored as column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -482,6 +485,7 @@ pub enum JobType {
     Import,
     Summary,
     Retranscribe,
+    Identify,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

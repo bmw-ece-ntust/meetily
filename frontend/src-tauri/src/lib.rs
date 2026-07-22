@@ -602,6 +602,7 @@ pub fn run() {
             api_client::commands::list_summaries,
             api_client::commands::get_summary,
             api_client::commands::generate_summary,
+            api_client::commands::list_jobs,
             api_client::commands::get_job_status,
             api_client::commands::cancel_job,
             api_client::commands::get_upload_queue_count,

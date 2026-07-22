@@ -669,6 +669,17 @@ pub async fn generate_summary(
 // ============================================================================
 
 #[tauri::command]
+pub async fn list_jobs(
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<Vec<JobStatusResponse>>, String> {
+    let client = client.read().await;
+    match client.list_jobs().await {
+        Ok(jobs) => Ok(CommandResult::success(jobs)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to list jobs: {}", e))),
+    }
+}
+
+#[tauri::command]
 pub async fn get_job_status(
     job_id: String,
     client: State<'_, Arc<RwLock<ApiClient>>>,

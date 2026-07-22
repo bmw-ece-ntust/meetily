@@ -12,7 +12,7 @@ import React, {
 import { toast } from 'sonner';
 import { meetingApiService } from '@/services/meetingApiService';
 
-export type BackgroundJobType = 'summary' | 'retranscribe' | 'import';
+export type BackgroundJobType = 'summary' | 'retranscribe' | 'import' | 'identify';
 export type BackgroundJobState =
   | 'queued'
   | 'starting'
@@ -130,6 +130,8 @@ function jobLabel(type: BackgroundJobType): string {
       return 'Retranscribe';
     case 'import':
       return 'Import';
+    case 'identify':
+      return 'Identify speakers';
   }
 }
 
@@ -780,6 +782,56 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
       pollTimersRef.current.clear();
     };
   }, []);
+
+  // Discover server-spawned identify jobs (spawned after import/retranscribe) and track them.
+  useEffect(() => {
+    let cancelled = false;
+
+    const discoverIdentifyJobs = async () => {
+      try {
+        const remoteJobs = await meetingApiService.listJobs();
+        if (cancelled) return;
+
+        for (const remote of remoteJobs) {
+          const jobType = (remote.job_type || '').toLowerCase();
+          if (jobType !== 'identify') continue;
+
+          const state = normalizeState(remote.state);
+          if (isTerminal(state)) continue;
+
+          const meetingId = remote.meeting_id || '';
+          if (!meetingId || !remote.job_id) continue;
+
+          const already = jobsRef.current.some(
+            (j) =>
+              j.jobId === remote.job_id ||
+              (j.type === 'identify' && j.meetingId === meetingId && !isTerminal(j.state))
+          );
+          if (already) continue;
+
+          trackJob({
+            jobId: remote.job_id,
+            type: 'identify',
+            meetingId,
+            meetingTitle: undefined,
+          });
+        }
+      } catch (err) {
+        // Server may be offline during startup; ignore.
+        console.debug('[JobQueue] listJobs discover skipped:', err);
+      }
+    };
+
+    void discoverIdentifyJobs();
+    const interval = setInterval(() => {
+      void discoverIdentifyJobs();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [trackJob]);
 
   const activeCount = useMemo(
     () => jobs.filter((j) => isActiveState(j.state)).length,
