@@ -12,6 +12,7 @@ import {
   Upload,
   ListTodo,
   Users,
+  Video,
 } from 'lucide-react';
 import {
   useJobQueue,
@@ -29,6 +30,8 @@ function typeIcon(type: BackgroundJobType) {
       return Upload;
     case 'identify':
       return Users;
+    case 'bot':
+      return Video;
   }
 }
 
@@ -42,6 +45,8 @@ function typeLabel(type: BackgroundJobType) {
       return 'Import';
     case 'identify':
       return 'Identify';
+    case 'bot':
+      return 'Meeting bot';
   }
 }
 
@@ -117,9 +122,15 @@ function JobRow({
               type="button"
               onClick={() => onCancel(job.id)}
               className="text-xs text-gray-400 hover:text-gray-700 shrink-0"
-              title="Cancel local tracking"
+              title={
+                job.type === 'bot' && !job.jobId
+                  ? 'Stop bot on server'
+                  : job.type === 'bot' && job.jobId
+                    ? 'Cancel transcription'
+                    : 'Cancel job'
+              }
             >
-              Cancel
+              {job.type === 'bot' && !job.jobId ? 'Stop' : 'Cancel'}
             </button>
           ) : (
             <button
@@ -154,18 +165,32 @@ function JobRow({
 export function ProcessingJobsIndicator() {
   const { jobs, activeCount, queuedCount, maxConcurrent, cancelLocal, dismissJob } =
     useJobQueue();
-  const [expanded, setExpanded] = useState(false);
-
-  if (jobs.length === 0) return null;
+  // Expand by default when there are jobs so bot status is visible after dialog closes
+  const [expanded, setExpanded] = useState(true);
+  const [userCollapsed, setUserCollapsed] = useState(false);
 
   const busyTotal = activeCount + queuedCount;
+  const showExpanded = expanded && !userCollapsed;
+
+  // Auto-expand when a new job appears
+  React.useEffect(() => {
+    if (jobs.length > 0 && busyTotal > 0) {
+      setExpanded(true);
+      setUserCollapsed(false);
+    }
+  }, [jobs.length, busyTotal]);
+
+  if (jobs.length === 0) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)]">
       <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => {
+            setUserCollapsed((c) => !c);
+            setExpanded((v) => !v);
+          }}
           className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left"
         >
           <div className="relative flex-shrink-0">
@@ -189,16 +214,17 @@ export function ProcessingJobsIndicator() {
             <p className="text-xs text-gray-500">
               {activeCount}/{maxConcurrent} active
               {queuedCount > 0 ? ` · ${queuedCount} queued` : ''}
+              {jobs.some((j) => j.type === 'bot') ? ' · includes meeting bot' : ''}
             </p>
           </div>
-          {expanded ? (
+          {showExpanded ? (
             <ChevronDown className="w-4 h-4 text-gray-400" />
           ) : (
             <ChevronUp className="w-4 h-4 text-gray-400" />
           )}
         </button>
 
-        {expanded && (
+        {showExpanded && (
           <div className="max-h-72 overflow-y-auto border-t border-gray-100">
             {jobs.map((job) => (
               <JobRow

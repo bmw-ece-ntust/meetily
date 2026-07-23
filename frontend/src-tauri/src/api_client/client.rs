@@ -583,6 +583,65 @@ impl ApiClient {
     }
 
     // ========================================================================
+    // Live meeting bots (agent proxies to internal meeting-bot)
+    // ========================================================================
+
+    pub async fn list_bot_platforms(&self) -> ApiResult<ListBotPlatformsResponse> {
+        let url = self.build_url("/bots/platforms");
+        let builder = self.client.get(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    pub async fn list_bots(
+        &self,
+        limit: Option<u32>,
+        status: Option<&str>,
+    ) -> ApiResult<ListBotsResponse> {
+        let mut url = self.build_url("/bots");
+        let mut q = Vec::new();
+        if let Some(l) = limit {
+            q.push(format!("limit={l}"));
+        }
+        if let Some(s) = status {
+            q.push(format!("status={s}"));
+        }
+        if !q.is_empty() {
+            url.push('?');
+            url.push_str(&q.join("&"));
+        }
+        let builder = self.client.get(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    pub async fn get_bot(&self, id: &str) -> ApiResult<BotJob> {
+        let url = self.build_url(&format!("/bots/{id}"));
+        let builder = self.client.get(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    pub async fn create_bot(&self, request: CreateBotRequest) -> ApiResult<CreateBotResponse> {
+        let url = self.build_url("/bots");
+        let builder = self.client.post(&url).json(&request);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    pub async fn delete_bot(&self, id: &str) -> ApiResult<BotJob> {
+        let url = self.build_url(&format!("/bots/{id}"));
+        let builder = self.client.delete(&url);
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    // ========================================================================
     // Import
     // ========================================================================
 

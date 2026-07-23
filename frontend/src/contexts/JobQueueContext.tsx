@@ -11,8 +11,9 @@ import React, {
 } from 'react';
 import { toast } from 'sonner';
 import { meetingApiService } from '@/services/meetingApiService';
+import { meetingBotService } from '@/services/meetingBotService';
 
-export type BackgroundJobType = 'summary' | 'retranscribe' | 'import' | 'identify';
+export type BackgroundJobType = 'summary' | 'retranscribe' | 'import' | 'identify' | 'bot';
 export type BackgroundJobState =
   | 'queued'
   | 'starting'
@@ -25,6 +26,8 @@ export type BackgroundJobState =
 export interface BackgroundJob {
   id: string;
   jobId?: string;
+  /** Live meeting-bot job id (agent GET /bots/:id). */
+  botId?: string;
   type: BackgroundJobType;
   meetingId: string;
   meetingTitle?: string;
@@ -65,6 +68,15 @@ export interface EnqueueImportOptions {
   onError?: (error: string) => void;
 }
 
+export interface EnqueueBotOptions {
+  meetingUrl: string;
+  platform?: string;
+  title?: string;
+  botName?: string;
+  onComplete?: (meetingId: string, result?: ImportJobResult) => void | Promise<void>;
+  onError?: (error: string) => void;
+}
+
 export interface ImportJobResult {
   meeting_id: string;
   title: string;
@@ -85,6 +97,8 @@ interface JobQueueContextType {
   enqueueSummary: (options: EnqueueSummaryOptions) => string;
   enqueueRetranscribe: (options: EnqueueRetranscribeOptions) => string;
   enqueueImport: (options: EnqueueImportOptions) => string;
+  /** Start Teams (etc.) bot via agent; tracks in background (can close dialog). */
+  enqueueBot: (options: EnqueueBotOptions) => string;
   trackJob: (params: {
     jobId: string;
     type: BackgroundJobType;
@@ -132,7 +146,25 @@ function jobLabel(type: BackgroundJobType): string {
       return 'Import';
     case 'identify':
       return 'Identify speakers';
+    case 'bot':
+      return 'Meeting bot';
   }
+}
+
+const BOT_STATUS_MESSAGE: Record<string, string> = {
+  queued: 'Bot queued…',
+  joining: 'Joining Teams (admit in lobby if needed)…',
+  in_call: 'In call…',
+  recording: 'Recording…',
+  uploading: 'Uploading recording…',
+  completed: 'Bot finished',
+  failed: 'Bot failed',
+  transcribing: 'Transcribing recording…',
+};
+
+/** Local job is a live-bot pipeline (join → record → import on same row). */
+function isBotPipeline(job: BackgroundJob): boolean {
+  return job.type === 'bot' || Boolean(job.botId);
 }
 
 function normalizeState(raw: string | undefined): BackgroundJobState {
@@ -231,9 +263,10 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
         toast.info(`${jobLabel(job.type)} cancelled`);
       }
 
+      // Keep terminal jobs visible longer so the tray doesn't look "empty" immediately
       setTimeout(() => {
         setJobsBoth((prev) => prev.filter((j) => j.id !== localId));
-      }, state === 'completed' ? 4000 : 8000);
+      }, state === 'completed' ? 8000 : 20_000);
 
       pumpRef.current();
     },
@@ -256,10 +289,43 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
       try {
         const status = await meetingApiService.getJobStatus(job.jobId);
         const state = normalizeState(status.state);
+        const fromBot = isBotPipeline(job);
 
         if (isTerminal(state)) {
           if (state === 'completed') {
-            await finishJob(localId, 'completed');
+            if (!status.meeting_id && count < 10) {
+              updateJob(localId, {
+                // keep type bot for live pipeline UX
+                type: fromBot ? 'bot' : job.type,
+                state: 'processing',
+                message: 'Waiting for meeting id…',
+                progress: 95,
+              });
+              const timer = setTimeout(() => {
+                void pollJob(localId);
+              }, POLL_INTERVAL_MS);
+              pollTimersRef.current.set(localId, timer);
+              return;
+            }
+            const meetingId =
+              status.meeting_id ||
+              (job.meetingId.startsWith('bot-pending') || job.meetingId.startsWith('import-pending')
+                ? ''
+                : job.meetingId);
+            if (!meetingId) {
+              await finishJob(
+                localId,
+                'failed',
+                'Import completed but meeting id missing — check server jobs'
+              );
+              return;
+            }
+            await finishJob(localId, 'completed', undefined, {
+              meeting_id: meetingId,
+              title: job.meetingTitle || 'Meeting',
+              segments_count: 0,
+              duration_seconds: 0,
+            });
           } else if (state === 'cancelled') {
             await finishJob(localId, 'cancelled');
           } else {
@@ -269,12 +335,15 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
         }
 
         updateJob(localId, {
+          type: fromBot ? 'bot' : job.type,
           state,
           error: status.error || undefined,
-          message:
-            state === 'pending'
+          message: fromBot
+            ? BOT_STATUS_MESSAGE.transcribing
+            : state === 'pending'
               ? 'Waiting on server...'
               : `${jobLabel(job.type)} in progress...`,
+          progress: fromBot ? Math.max(job.progress ?? 88, 90) : job.progress,
         });
 
         const timer = setTimeout(() => {
@@ -283,7 +352,6 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
         pollTimersRef.current.set(localId, timer);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // Transient poll errors: retry a few times
         if (count < 5) {
           const timer = setTimeout(() => {
             void pollJob(localId);
@@ -523,6 +591,181 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
     [setJobsBoth]
   );
 
+  const pollBotJob = useCallback(
+    async (localId: string) => {
+      const job = jobsRef.current.find((j) => j.id === localId);
+      // Keep type 'bot' for the whole pipeline (join → import); only need botId
+      if (!job?.botId || !isBotPipeline(job) || isTerminal(job.state)) return;
+
+      // Already handed off to agent import job — poll that, not bot status
+      if (job.jobId) {
+        void pollJob(localId);
+        return;
+      }
+
+      const count = (pollCountsRef.current.get(localId) || 0) + 1;
+      pollCountsRef.current.set(localId, count);
+      if (count > MAX_POLLS) {
+        await finishJob(localId, 'failed', 'Meeting bot timed out');
+        return;
+      }
+
+      try {
+        const bot = await meetingBotService.getBot(job.botId);
+        const status = (bot.status || '').toLowerCase();
+        const message = BOT_STATUS_MESSAGE[status] || status;
+
+        // Prefer import id even on failed bot (partial upload)
+        const importJobId = bot.meeting_agent_job_id;
+
+        if (status === 'failed' && !importJobId) {
+          await finishJob(localId, 'failed', bot.error || 'Meeting bot failed');
+          return;
+        }
+
+        if (status === 'completed' || (status === 'failed' && importJobId)) {
+          if (!importJobId) {
+            if (count < 15) {
+              updateJob(localId, {
+                type: 'bot',
+                state: 'processing',
+                message: 'Waiting for import job id…',
+                progress: 85,
+                meetingTitle: bot.title || job.meetingTitle,
+              });
+              const timer = setTimeout(() => {
+                void pollBotJob(localId);
+              }, POLL_INTERVAL_MS);
+              pollTimersRef.current.set(localId, timer);
+              return;
+            }
+            await finishJob(
+              localId,
+              'failed',
+              bot.error ||
+                'Bot finished but no import job was created (check meeting-bot logs for [import])'
+            );
+            return;
+          }
+
+          // Same local row: stay type bot, add import jobId, then poll agent jobs.
+          // Drop any orphan import row that events may have created for the same jobId.
+          setJobsBoth((prev) =>
+            prev
+              .filter(
+                (j) =>
+                  !(
+                    j.id !== localId &&
+                    j.jobId === importJobId &&
+                    !isTerminal(j.state)
+                  )
+              )
+              .map((j) =>
+                j.id === localId
+                  ? {
+                      ...j,
+                      type: 'bot' as const,
+                      jobId: importJobId,
+                      botId: job.botId,
+                      state: 'processing' as const,
+                      message: BOT_STATUS_MESSAGE.transcribing,
+                      progress: 88,
+                      meetingTitle: bot.title || job.meetingTitle,
+                    }
+                  : j
+              )
+          );
+          clearPoll(localId);
+          pollCountsRef.current.set(localId, 0);
+          void pollJob(localId);
+          return;
+        }
+
+        // Still running (joining / in_call / recording / uploading)
+        const progressMap: Record<string, number> = {
+          queued: 5,
+          joining: 15,
+          in_call: 35,
+          recording: 55,
+          uploading: 80,
+        };
+        updateJob(localId, {
+          type: 'bot',
+          state: 'processing',
+          message,
+          progress: progressMap[status] ?? 40,
+          meetingTitle: bot.title || job.meetingTitle,
+        });
+
+        const timer = setTimeout(() => {
+          void pollBotJob(localId);
+        }, POLL_INTERVAL_MS);
+        pollTimersRef.current.set(localId, timer);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (count < 5) {
+          const timer = setTimeout(() => {
+            void pollBotJob(localId);
+          }, POLL_INTERVAL_MS);
+          pollTimersRef.current.set(localId, timer);
+          return;
+        }
+        await finishJob(localId, 'failed', msg);
+      }
+    },
+    [clearPoll, finishJob, pollJob, setJobsBoth, updateJob]
+  );
+
+  const enqueueBot = useCallback(
+    (options: EnqueueBotOptions): string => {
+      const id = makeLocalId();
+      callbacksRef.current.set(id, {
+        onComplete: options.onComplete,
+        onError: options.onError,
+      });
+
+      const title = options.title?.trim() || 'Teams meeting';
+      const job: BackgroundJob = {
+        id,
+        type: 'bot',
+        meetingId: `bot-pending-${id}`,
+        meetingTitle: title,
+        state: 'starting',
+        message: 'Starting bot…',
+        createdAt: Date.now(),
+      };
+      setJobsBoth((prev) => [...prev, job]);
+
+      toast.info('Meeting bot starting', {
+        description: 'You can close this dialog — progress is in the job list.',
+      });
+
+      void (async () => {
+        try {
+          const { botId } = await meetingBotService.createBot({
+            platform: options.platform || 'teams',
+            meetingUrl: options.meetingUrl,
+            title: options.title,
+            botName: options.botName,
+          });
+          updateJob(id, {
+            botId,
+            state: 'processing',
+            message: BOT_STATUS_MESSAGE.joining,
+            progress: 10,
+          });
+          void pollBotJob(id);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await finishJob(id, 'failed', msg);
+        }
+      })();
+
+      return id;
+    },
+    [finishJob, pollBotJob, setJobsBoth, updateJob]
+  );
+
   const trackJob = useCallback(
     (params: {
       jobId: string;
@@ -585,17 +828,51 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      clearPoll(localId);
-
       if (job.type === 'import' && job.jobId) {
+        clearPoll(localId);
         void import('@tauri-apps/api/core')
           .then(({ invoke }) => invoke('cancel_import_command', { jobId: job.jobId }))
           .catch((err) => console.warn('[JobQueue] cancel import failed:', err));
+        void finishJob(localId, 'cancelled');
+        return;
       }
 
+      // Bot pipeline (still joining/recording, or already transcribing)
+      if (isBotPipeline(job) && job.botId && !job.jobId) {
+        updateJob(localId, {
+          type: 'bot',
+          state: 'processing',
+          message: 'Stopping bot…',
+          progress: job.progress,
+        });
+        toast.info('Stopping meeting bot…');
+        void meetingBotService
+          .stopBot(job.botId)
+          .catch((err) => console.warn('[JobQueue] stop bot failed:', err));
+        if (!pollTimersRef.current.has(localId)) {
+          void pollBotJob(localId);
+        }
+        return;
+      }
+
+      // Transcribing phase of bot pipeline: cancel import job if possible
+      if (isBotPipeline(job) && job.jobId) {
+        clearPoll(localId);
+        void import('@tauri-apps/api/core')
+          .then(({ invoke }) => invoke('cancel_job', { jobId: job.jobId }))
+          .catch(() => {
+            void import('@tauri-apps/api/core')
+              .then(({ invoke }) => invoke('cancel_import_command', { jobId: job.jobId }))
+              .catch((err) => console.warn('[JobQueue] cancel import failed:', err));
+          });
+        void finishJob(localId, 'cancelled');
+        return;
+      }
+
+      clearPoll(localId);
       void finishJob(localId, 'cancelled');
     },
-    [clearPoll, finishJob, setJobsBoth]
+    [clearPoll, finishJob, pollBotJob, setJobsBoth, updateJob]
   );
 
   const dismissJob = useCallback(
@@ -650,11 +927,34 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
           const state = normalizeState(payload.state);
 
           if (existing) {
+            // Keep bot pipeline rows as type bot through transcription
             updateJob(existing.id, {
+              type: isBotPipeline(existing) ? 'bot' : existing.type,
               state: isTerminal(state) ? existing.state : state,
-              progress: lastProgress?.percent,
-              message: lastProgress?.message || lastProgress?.stage,
+              progress: lastProgress?.percent ?? existing.progress,
+              message:
+                isBotPipeline(existing) && type === 'import'
+                  ? lastProgress?.message || BOT_STATUS_MESSAGE.transcribing
+                  : lastProgress?.message || lastProgress?.stage,
             });
+            return;
+          }
+
+          // Attach to in-flight bot row that has not received jobId yet (avoid dual rows)
+          const openBot = jobsRef.current.find(
+            (j) => isBotPipeline(j) && !j.jobId && !isTerminal(j.state)
+          );
+          if (openBot && (type === 'import' || !payload.job_type) && !isTerminal(state)) {
+            updateJob(openBot.id, {
+              type: 'bot',
+              jobId: payload.job_id,
+              state: 'processing',
+              progress: lastProgress?.percent ?? 88,
+              message: lastProgress?.message || BOT_STATUS_MESSAGE.transcribing,
+              meetingId: payload.meeting_id || openBot.meetingId,
+            });
+            pollCountsRef.current.set(openBot.id, 0);
+            void pollJob(openBot.id);
             return;
           }
 
@@ -715,9 +1015,12 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
           const existing = jobsRef.current.find((j) => j.jobId === payload.job_id);
           if (!existing || isTerminal(existing.state)) return;
           updateJob(existing.id, {
+            type: isBotPipeline(existing) ? 'bot' : existing.type,
             state: 'processing',
-            progress: payload.progress_percentage,
-            message: payload.message || payload.stage || 'Importing...',
+            progress: payload.progress_percentage ?? existing.progress,
+            message: isBotPipeline(existing)
+              ? payload.message || BOT_STATUS_MESSAGE.transcribing
+              : payload.message || payload.stage || 'Importing...',
           });
         });
 
@@ -773,7 +1076,7 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
       unlistenImportComplete?.();
       unlistenImportError?.();
     };
-  }, [finishJob, setJobsBoth, updateJob]);
+  }, [finishJob, pollJob, setJobsBoth, updateJob]);
 
   // Cleanup all polls on unmount
   useEffect(() => {
@@ -784,18 +1087,163 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Discover server-spawned identify jobs (spawned after import/retranscribe) and track them.
+  // Rehydrate only live bots (queued→uploading). Never rehydrate completed/failed bots —
+  // that recreated stuck "Transcribing…" rows after import already finished.
   useEffect(() => {
     let cancelled = false;
 
+    const ACTIVE_BOT = new Set([
+      'queued',
+      'joining',
+      'in_call',
+      'recording',
+      'uploading',
+    ]);
+
+    const discoverBots = async () => {
+      if (cancelled) return;
+      try {
+        // Avoid racing a local enqueueBot that has not received botId yet
+        if (
+          jobsRef.current.some(
+            (j) => j.type === 'bot' && j.state === 'starting' && !j.botId
+          )
+        ) {
+          return;
+        }
+
+        const bots = await meetingBotService.listBots(30);
+        if (cancelled) return;
+
+        const live = bots.filter((b) =>
+          ACTIVE_BOT.has((b.status || '').toLowerCase())
+        );
+        const liveIds = new Set(live.map((b) => b.id));
+
+        // Clear tray rows for dead bots (not live, no in-flight import)
+        for (const j of [...jobsRef.current]) {
+          if (!isBotPipeline(j) || isTerminal(j.state)) continue;
+          if (j.botId && liveIds.has(j.botId)) continue;
+
+          // Still joining/recording locally but server says bot is gone
+          if (!j.jobId) {
+            clearPoll(j.id);
+            callbacksRef.current.delete(j.id);
+            setJobsBoth((prev) => prev.filter((x) => x.id !== j.id));
+            continue;
+          }
+
+          // Transcribing phase: resolve or drop if import already finished/missing
+          try {
+            const status = await meetingApiService.getJobStatus(j.jobId);
+            if (cancelled) return;
+            const st = normalizeState(status.state);
+            if (st === 'completed' && status.meeting_id) {
+              void finishJob(j.id, 'completed', undefined, {
+                meeting_id: status.meeting_id,
+                title: j.meetingTitle || 'Meeting',
+                segments_count: 0,
+                duration_seconds: 0,
+              });
+            } else if (st === 'cancelled') {
+              void finishJob(j.id, 'cancelled');
+            } else if (st === 'failed') {
+              void finishJob(j.id, 'failed', status.error || 'Import failed');
+            } else if (isTerminal(st)) {
+              clearPoll(j.id);
+              callbacksRef.current.delete(j.id);
+              setJobsBoth((prev) => prev.filter((x) => x.id !== j.id));
+            }
+            // else still pending/processing — keep row + poll
+          } catch {
+            clearPoll(j.id);
+            callbacksRef.current.delete(j.id);
+            setJobsBoth((prev) => prev.filter((x) => x.id !== j.id));
+          }
+        }
+
+        for (const bot of live) {
+          const st = (bot.status || '').toLowerCase();
+          const already = jobsRef.current.some(
+            (j) => j.botId === bot.id && !isTerminal(j.state)
+          );
+          if (already) continue;
+
+          const id = makeLocalId();
+          const title = bot.title || 'Teams meeting';
+          setJobsBoth((prev) => [
+            ...prev,
+            {
+              id,
+              type: 'bot',
+              botId: bot.id,
+              meetingId: `bot-pending-${bot.id}`,
+              meetingTitle: title,
+              state: 'processing',
+              message: BOT_STATUS_MESSAGE[st] || st,
+              progress:
+                ({ queued: 5, joining: 15, in_call: 35, recording: 55, uploading: 80 } as Record<
+                  string,
+                  number
+                >)[st] ?? 40,
+              createdAt: Date.now(),
+            },
+          ]);
+          void pollBotJob(id);
+        }
+
+        // Rehydrate completed bot → import only if import is still non-terminal
+        for (const bot of bots) {
+          const st = (bot.status || '').toLowerCase();
+          if (st !== 'completed' || !bot.meeting_agent_job_id) continue;
+          const already = jobsRef.current.some(
+            (j) =>
+              (j.botId === bot.id || j.jobId === bot.meeting_agent_job_id) &&
+              !isTerminal(j.state)
+          );
+          if (already) continue;
+          try {
+            const status = await meetingApiService.getJobStatus(
+              bot.meeting_agent_job_id
+            );
+            if (cancelled) return;
+            if (isTerminal(normalizeState(status.state))) continue;
+            const id = makeLocalId();
+            setJobsBoth((prev) => [
+              ...prev,
+              {
+                id,
+                type: 'bot',
+                botId: bot.id,
+                jobId: bot.meeting_agent_job_id,
+                meetingId: `bot-pending-${bot.id}`,
+                meetingTitle: bot.title || 'Teams meeting',
+                state: 'processing',
+                message: BOT_STATUS_MESSAGE.transcribing,
+                progress: 88,
+                createdAt: Date.now(),
+              },
+            ]);
+            pollCountsRef.current.set(id, 0);
+            void pollJob(id);
+          } catch {
+            // import job gone — skip (no stuck row)
+          }
+        }
+      } catch (err) {
+        console.debug('[JobQueue] listBots discover skipped:', err);
+      }
+    };
+
     const discoverIdentifyJobs = async () => {
+      if (cancelled) return;
       try {
         const remoteJobs = await meetingApiService.listJobs();
         if (cancelled) return;
 
         for (const remote of remoteJobs) {
-          const jobType = (remote.job_type || '').toLowerCase();
-          if (jobType !== 'identify') continue;
-
+          const type = (remote.job_type || '').toLowerCase();
+          if (type !== 'identify') continue;
           const state = normalizeState(remote.state);
           if (isTerminal(state)) continue;
 
@@ -817,21 +1265,22 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } catch (err) {
-        // Server may be offline during startup; ignore.
         console.debug('[JobQueue] listJobs discover skipped:', err);
       }
     };
 
-    void discoverIdentifyJobs();
-    const interval = setInterval(() => {
+    const tick = () => {
+      void discoverBots();
       void discoverIdentifyJobs();
-    }, 4000);
+    };
+    void tick();
+    const interval = setInterval(tick, 4000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [trackJob]);
+  }, [clearPoll, finishJob, pollBotJob, pollJob, setJobsBoth, trackJob]);
 
   const activeCount = useMemo(
     () => jobs.filter((j) => isActiveState(j.state)).length,
@@ -851,6 +1300,7 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
       enqueueSummary,
       enqueueRetranscribe,
       enqueueImport,
+      enqueueBot,
       trackJob,
       cancelLocal,
       dismissJob,
@@ -864,6 +1314,7 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
       enqueueSummary,
       enqueueRetranscribe,
       enqueueImport,
+      enqueueBot,
       trackJob,
       cancelLocal,
       dismissJob,

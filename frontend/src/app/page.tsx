@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { Mic, Upload, FileText, Sparkles } from 'lucide-react';
+import { Mic, Upload, FileText, Sparkles, Video } from 'lucide-react';
 import { RecordingControls } from '@/components/RecordingControls';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { usePermissionCheck } from '@/hooks/usePermissionCheck';
@@ -18,10 +18,12 @@ import { useRecordingStateSync } from '@/hooks/useRecordingStateSync';
 import { useRecordingStart } from '@/hooks/useRecordingStart';
 import { useRecordingStop } from '@/hooks/useRecordingStop';
 import { Button } from '@/components/ui/button';
+import { JoinMeetingDialog } from '@/components/JoinMeetingDialog';
 
 export default function Home() {
   const router = useRouter();
   const [isRecording, setIsRecordingState] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
   const [barHeights, setBarHeights] = useState(['58%', '76%', '58%']);
 
   const { transcriptModelConfig, selectedDevices, betaFeatures } = useConfig();
@@ -97,7 +99,8 @@ export default function Home() {
                 Ready for your next meeting
               </h1>
               <p className="text-sm text-gray-500 mb-8">
-                Record live audio or import a file. Transcripts and summaries are processed by your AI server.
+                Record live, join Teams with a bot, or import a file. Transcripts run on your AI
+                server.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3 mb-10">
@@ -111,6 +114,17 @@ export default function Home() {
                 >
                   <Mic className="mr-2 h-4 w-4" />
                   Start Recording
+                </Button>
+                <Button
+                  variant="outline"
+                  className="px-5"
+                  onClick={() => {
+                    Analytics.trackButtonClick('join_meeting', 'home_empty_state');
+                    setJoinOpen(true);
+                  }}
+                >
+                  <Video className="mr-2 h-4 w-4" />
+                  Join meeting
                 </Button>
                 {betaFeatures.importAndRetranscribe && (
                   <Button
@@ -195,6 +209,8 @@ export default function Home() {
           sidebarCollapsed={sidebarCollapsed}
         />
       </div>
+
+      <JoinMeetingDialog open={joinOpen} onOpenChange={setJoinOpen} />
     </motion.div>
   );
 }

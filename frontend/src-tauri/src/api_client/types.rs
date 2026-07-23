@@ -528,6 +528,86 @@ pub struct CancelJobResponse {
 }
 
 // ============================================================================
+// Live meeting bots (proxied via agent POST /bots → meeting-bot worker)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBotRequest {
+    pub platform: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meeting_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_meeting_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBotResponse {
+    #[serde(default)]
+    pub job_id: Option<String>,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub platform: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+impl CreateBotResponse {
+    pub fn bot_id(&self) -> Option<String> {
+        self.job_id
+            .clone()
+            .or_else(|| self.id.clone())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BotJob {
+    pub id: String,
+    pub platform: String,
+    pub status: String,
+    #[serde(default)]
+    pub meeting_url: Option<String>,
+    #[serde(default)]
+    pub native_meeting_id: Option<String>,
+    #[serde(default)]
+    pub bot_name: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub recording_path: Option<String>,
+    #[serde(default)]
+    pub meeting_agent_job_id: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListBotsResponse {
+    #[serde(default)]
+    pub bots: Vec<BotJob>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformInfo {
+    pub id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListBotPlatformsResponse {
+    #[serde(default)]
+    pub platforms: Vec<PlatformInfo>,
+}
+
+// ============================================================================
 // Config Types
 // ============================================================================
 

@@ -704,6 +704,84 @@ pub async fn cancel_job(
 }
 
 // ============================================================================
+// Live meeting bots (agent POST /bots → meeting-bot worker)
+// ============================================================================
+
+#[tauri::command]
+pub async fn list_bot_platforms(
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<ListBotPlatformsResponse>, String> {
+    let client = client.read().await;
+    match client.list_bot_platforms().await {
+        Ok(v) => Ok(CommandResult::success(v)),
+        Err(e) => Ok(CommandResult::error(format!(
+            "Failed to list bot platforms: {}",
+            e
+        ))),
+    }
+}
+
+#[tauri::command]
+pub async fn list_bots(
+    limit: Option<u32>,
+    status: Option<String>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<ListBotsResponse>, String> {
+    let client = client.read().await;
+    match client.list_bots(limit, status.as_deref()).await {
+        Ok(v) => Ok(CommandResult::success(v)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to list bots: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn get_bot(
+    id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<BotJob>, String> {
+    let client = client.read().await;
+    match client.get_bot(&id).await {
+        Ok(v) => Ok(CommandResult::success(v)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to get bot: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn create_bot(
+    platform: String,
+    meeting_url: Option<String>,
+    native_meeting_id: Option<String>,
+    bot_name: Option<String>,
+    title: Option<String>,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<CreateBotResponse>, String> {
+    let client = client.read().await;
+    let request = CreateBotRequest {
+        platform,
+        meeting_url,
+        native_meeting_id,
+        bot_name,
+        title,
+    };
+    match client.create_bot(request).await {
+        Ok(v) => Ok(CommandResult::success(v)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to create bot: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn delete_bot(
+    id: String,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<BotJob>, String> {
+    let client = client.read().await;
+    match client.delete_bot(&id).await {
+        Ok(v) => Ok(CommandResult::success(v)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to stop bot: {}", e))),
+    }
+}
+
+// ============================================================================
 // Upload Queue Commands
 // ============================================================================
 
