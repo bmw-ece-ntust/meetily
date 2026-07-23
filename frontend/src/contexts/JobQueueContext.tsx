@@ -1215,7 +1215,7 @@ export function JobQueueProvider({ children }: { children: React.ReactNode }) {
                 id,
                 type: 'bot',
                 botId: bot.id,
-                jobId: bot.meeting_agent_job_id,
+                jobId: bot.meeting_agent_job_id ?? undefined,
                 meetingId: `bot-pending-${bot.id}`,
                 meetingTitle: bot.title || 'Teams meeting',
                 state: 'processing',
