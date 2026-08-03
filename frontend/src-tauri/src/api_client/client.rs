@@ -159,6 +159,25 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
+    /// Mark a meeting's minutes as certified (reviewed). When the meeting is
+    /// linked to a Google Calendar event, the server emails the minutes to
+    /// the event attendees.
+    pub async fn certify_meeting(
+        &self,
+        id: &str,
+        certified: bool,
+    ) -> ApiResult<CertifyMeetingResponse> {
+        let url = self.build_url(&format!("/meetings/{}/certify", id));
+        let builder = self
+            .client
+            .patch(&url)
+            .json(&serde_json::json!({ "certified": certified }));
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+
+        self.handle_response(response).await
+    }
+
     pub async fn rename_speakers(
         &self,
         id: &str,

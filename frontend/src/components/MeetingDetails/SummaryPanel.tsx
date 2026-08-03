@@ -10,6 +10,8 @@ import { EditParticipantsDialog } from './EditParticipantsDialog';
 import { EditMeetingDetailsDialog } from './EditMeetingDetailsDialog';
 import { EditSpeakerLabelsDialog } from './EditSpeakerLabelsDialog';
 import { SendMinutesDialog } from './SendMinutesDialog';
+import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import { MeetingAudioPlayer } from '@/components/MeetingAudioPlayer';
 import Analytics from '@/lib/analytics';
 import { MapPin, Pencil, Tags, Users, XCircle } from 'lucide-react';
@@ -102,6 +104,50 @@ export function SummaryPanel({
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [speakersDialogOpen, setSpeakersDialogOpen] = useState(false);
   const [sendMinutesOpen, setSendMinutesOpen] = useState(false);
+  const [isCertifying, setIsCertifying] = useState(false);
+
+  const handleCertify = async () => {
+    if (
+      !confirm(
+        'Certify these minutes as reviewed? If this meeting is linked to a calendar event, the minutes will be emailed to all attendees.'
+      )
+    ) {
+      return;
+    }
+    setIsCertifying(true);
+    try {
+      const result = await invoke<{
+        success: boolean;
+        data?: { certified: boolean; email: string };
+        error?: string;
+      }>('certify_meeting', { id: meeting.id, certified: true });
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Certification failed');
+      }
+      const outcome = result.data.email;
+      if (outcome.startsWith('sent:')) {
+        toast.success(`Minutes certified and emailed to ${outcome.slice(5)} attendee(s)`);
+      } else if (outcome.startsWith('failed:')) {
+        toast.error('Certified, but email failed', { description: outcome.slice(7) });
+      } else {
+        const reasons: Record<string, string> = {
+          'skipped:already_sent': 'Minutes were already emailed for this meeting.',
+          'skipped:no_calendar_link': 'No linked calendar event — nothing emailed.',
+          'skipped:empty_summary': 'Summary is empty — nothing emailed.',
+          'skipped:no_recipients': 'Calendar event has no other attendees.',
+        };
+        toast.success('Minutes certified', {
+          description: reasons[outcome] || outcome,
+        });
+      }
+    } catch (error) {
+      toast.error('Failed to certify minutes', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsCertifying(false);
+    }
+  };
 
   const isSummaryLoading = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
   const hasRecording = Boolean(meeting.audio_file);
@@ -299,6 +345,8 @@ export function SummaryPanel({
                 isDirty={isSummaryDirty}
                 isSaving={isSavingSummary}
                 onSendMinutes={() => setSendMinutesOpen(true)}
+                onCertify={handleCertify}
+                isCertifying={isCertifying}
               />
             </div>
           </div>

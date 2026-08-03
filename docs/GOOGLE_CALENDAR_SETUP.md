@@ -38,6 +38,13 @@ Required before the "Send minutes to attendees" feature can sign in. One-time se
 4. Name: `Meetily Desktop` → **Create**
 5. Copy the **Client ID** and **Client Secret** from the dialog (you can also download the JSON)
 
+> **Server (ai-meeting-agent) auto-join:** create a *second* OAuth client of type
+> **Web application** (same project, same consent screen). Add authorized
+> redirect URI `http://<server-host>:8080/google/callback`. Put its client
+> ID/secret in the server's `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` env
+> vars (see `.env.example`). The Desktop-app client created above is only for
+> the Meetily desktop app.
+
 ## 5. Enter credentials in Meetily
 
 1. Open Meetily → **Settings**
@@ -55,3 +62,34 @@ Required before the "Send minutes to attendees" feature can sign in. One-time se
 - Disconnecting (Settings → Disconnect) removes the token from the Keychain.
 - If Google expires the test-mode refresh token (7 days for unverified apps in some cases), just click **Connect** again.
 - Sending is never automatic — you review the recipient list and subject before every send.
+
+## Server-side (ai-meeting-agent): Teams auto-join + certified email
+
+Separate from the desktop flow above. The server polls each connected
+account's calendar for today's Teams meetings, auto-joins them with the
+meeting bot, and emails the minutes to attendees **only after a human
+certifies them**.
+
+1. Create the **Web application** OAuth client (step 4 note above).
+2. Server env (`.env`, see `.env.example`):
+   - `GOOGLE_CALENDAR_ENABLED=true`
+   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (web client)
+   - `GOOGLE_TOKEN_KEY` — generate with `openssl rand -hex 32`
+   - `MEETING_BOT_ENABLED=true` + `MEETING_BOT_URL` (required for auto-join)
+3. Connect an account: call `GET /google/connect` (with API key) → open the
+   returned `auth_url` in a browser → consent → Google redirects to
+   `/google/callback` → account stored. Repeat per user.
+4. `GET /google/status` lists connected accounts;
+   `PATCH /google/accounts/:email` toggles `auto_join`;
+   `DELETE /google/accounts/:email` removes the grant.
+5. Certify minutes: `PATCH /meetings/:id/certify` with
+   `{"certified": true}` — the server emails the `.md` minutes to the event
+   attendees (once; re-certifying does not re-send).
+
+Notes:
+
+- Only **Microsoft Teams** join links are dispatched. Zoom/Meet links are
+  parsed but ignored.
+- The bot may land in the Teams lobby — someone must admit it manually.
+- Refresh tokens are stored AES-256-GCM encrypted in the server database;
+  losing `GOOGLE_TOKEN_KEY` means all accounts must reconnect.

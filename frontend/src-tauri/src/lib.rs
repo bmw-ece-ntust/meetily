@@ -582,6 +582,7 @@ pub fn run() {
             api_client::commands::list_meetings,
             api_client::commands::get_meeting,
             api_client::commands::update_meeting,
+            api_client::commands::certify_meeting,
             api_client::commands::rename_meeting_speakers,
             api_client::commands::identify_meeting_speakers,
             api_client::commands::clear_meeting_speaker_identification,

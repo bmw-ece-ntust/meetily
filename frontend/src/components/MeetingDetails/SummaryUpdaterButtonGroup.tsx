@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Mail, Save } from 'lucide-react';
+import { BadgeCheck, Copy, Mail, Save } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 
 interface SummaryUpdaterButtonGroupProps {
@@ -12,6 +12,8 @@ interface SummaryUpdaterButtonGroupProps {
   isDirty?: boolean;
   isSaving?: boolean;
   onSendMinutes?: () => void;
+  onCertify?: () => Promise<void> | void;
+  isCertifying?: boolean;
 }
 
 export function SummaryUpdaterButtonGroup({
@@ -21,6 +23,8 @@ export function SummaryUpdaterButtonGroup({
   isDirty = false,
   isSaving = false,
   onSendMinutes,
+  onCertify,
+  isCertifying = false,
 }: SummaryUpdaterButtonGroupProps) {
   return (
     <ButtonGroup>
@@ -68,6 +72,22 @@ export function SummaryUpdaterButtonGroup({
         >
           <Mail />
           <span className="hidden lg:inline">Send</span>
+        </Button>
+      )}
+      {onCertify && (
+        <Button
+          variant="outline"
+          size="sm"
+          title="Certify minutes and email them to calendar attendees"
+          onClick={() => {
+            Analytics.trackButtonClick('certify_minutes', 'meeting_details');
+            void onCertify();
+          }}
+          disabled={!hasSummary || isCertifying}
+          className="cursor-pointer"
+        >
+          <BadgeCheck />
+          <span className="hidden lg:inline">{isCertifying ? 'Certifying…' : 'Certify & Send'}</span>
         </Button>
       )}
     </ButtonGroup>

@@ -80,6 +80,14 @@ pub struct ListMeetingsResponse {
     pub offset: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CertifyMeetingResponse {
+    pub meeting_id: String,
+    pub certified: bool,
+    /// Email outcome: "sent:<n>", "skipped:<reason>", or "failed:<error>".
+    pub email: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateMeetingRequest {
     pub title: String,

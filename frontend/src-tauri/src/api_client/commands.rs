@@ -230,6 +230,21 @@ pub async fn update_meeting(
     }
 }
 
+/// Certify (or uncertify) a meeting's minutes. On certify, the server
+/// emails the minutes to the linked calendar event's attendees.
+#[tauri::command]
+pub async fn certify_meeting(
+    id: String,
+    certified: bool,
+    client: State<'_, Arc<RwLock<ApiClient>>>,
+) -> Result<CommandResult<crate::api_client::types::CertifyMeetingResponse>, String> {
+    let client = client.read().await;
+    match client.certify_meeting(&id, certified).await {
+        Ok(response) => Ok(CommandResult::success(response)),
+        Err(e) => Ok(CommandResult::error(format!("Failed to certify meeting: {}", e))),
+    }
+}
+
 #[tauri::command]
 pub async fn rename_meeting_speakers(
     id: String,
