@@ -72,7 +72,14 @@ export function AudioPlayerBase({
     const onMeta = () => setDuration(el.duration || 0);
     const onEnd = () => setIsPlaying(false);
     const onErr = () => {
-      setMediaError('Failed to load audio');
+      const reasons: Record<number, string> = {
+        2: 'network error',
+        3: 'decode error',
+        4: 'source not supported',
+      };
+      const code = el.error?.code;
+      const reason = (code && reasons[code]) || 'unknown error';
+      setMediaError(`Failed to load audio (${reason})`);
       setIsPlaying(false);
     };
 

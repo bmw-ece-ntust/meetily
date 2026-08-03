@@ -16,8 +16,7 @@ macro_rules! perf_debug {
     ($($arg:tt)*) => {};
 }
 
-// Make these macros available to other modules
-pub(crate) use perf_debug;
+// Macros are available to other modules via textual macro scoping.
 
 // Re-export async logging macros for external use (removed due to macro conflicts)
 
@@ -28,6 +27,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod media_protocol;
 pub mod github_export;
 pub mod notifications;
 pub mod onboarding;
@@ -390,6 +390,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .register_uri_scheme_protocol("media", media_protocol::handle)
         .manage(Arc::new(RwLock::new(
             None::<notifications::manager::NotificationManager<tauri::Wry>>,
         )) as NotificationManagerState<tauri::Wry>)
