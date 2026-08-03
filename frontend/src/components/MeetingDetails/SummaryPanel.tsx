@@ -9,6 +9,7 @@ import { EditTitleDialog } from './EditTitleDialog';
 import { EditParticipantsDialog } from './EditParticipantsDialog';
 import { EditMeetingDetailsDialog } from './EditMeetingDetailsDialog';
 import { EditSpeakerLabelsDialog } from './EditSpeakerLabelsDialog';
+import { SendMinutesDialog } from './SendMinutesDialog';
 import { MeetingAudioPlayer } from '@/components/MeetingAudioPlayer';
 import Analytics from '@/lib/analytics';
 import { MapPin, Pencil, Tags, Users, XCircle } from 'lucide-react';
@@ -100,6 +101,7 @@ export function SummaryPanel({
   const [participantsDialogOpen, setParticipantsDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [speakersDialogOpen, setSpeakersDialogOpen] = useState(false);
+  const [sendMinutesOpen, setSendMinutesOpen] = useState(false);
 
   const isSummaryLoading = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
   const hasRecording = Boolean(meeting.audio_file);
@@ -296,6 +298,7 @@ export function SummaryPanel({
                 onSave={onSaveSummaryClick}
                 isDirty={isSummaryDirty}
                 isSaving={isSavingSummary}
+                onSendMinutes={() => setSendMinutesOpen(true)}
               />
             </div>
           </div>
@@ -387,6 +390,16 @@ export function SummaryPanel({
         personNames={personNames}
         onSave={onRenameSpeakers}
         onCancel={() => setSpeakersDialogOpen(false)}
+      />
+      <SendMinutesDialog
+        open={sendMinutesOpen}
+        meetingId={meeting.id}
+        meetingTitle={meetingTitle || meeting.title || ''}
+        getMarkdown={async () => {
+          if (!summaryRef.current) throw new Error('Summary not ready');
+          return summaryRef.current.getMarkdown();
+        }}
+        onClose={() => setSendMinutesOpen(false)}
       />
     </div>
   );

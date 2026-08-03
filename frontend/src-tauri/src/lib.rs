@@ -29,6 +29,7 @@ pub mod console_utils;
 pub mod database;
 pub mod media_protocol;
 pub mod github_export;
+pub mod google;
 pub mod notifications;
 pub mod onboarding;
 pub mod state;
@@ -627,6 +628,13 @@ pub fn run() {
             summary::commands::api_get_summary,
             summary::commands::api_process_transcript,
             summary::commands::api_cancel_summary,
+            // Google Calendar/Gmail commands
+            google::commands::get_google_status,
+            google::commands::set_google_config,
+            google::commands::google_connect,
+            google::commands::google_disconnect,
+            google::commands::google_find_event,
+            google::commands::google_send_minutes,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
