@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { voiceBankApiService } from '@/services/voiceBankApiService';
 import { AudioPlayerBase } from '@/components/AudioPlayerBase';
+import { personSampleAudioUrl } from '@/lib/mediaUrl';
 
 interface SampleAudioPlayerProps {
   personId: string;
@@ -10,12 +10,12 @@ interface SampleAudioPlayerProps {
   className?: string;
 }
 
-export function SampleAudioPlayer({ 
-  personId, 
-  sampleId, 
-  className 
+export function SampleAudioPlayer({
+  personId,
+  sampleId,
+  className,
 }: SampleAudioPlayerProps) {
-  const [audioBytes, setAudioBytes] = useState<Uint8Array | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +24,7 @@ export function SampleAudioPlayer({
 
     const load = async () => {
       if (!personId || !sampleId) {
-        setAudioBytes(null);
+        setAudioUrl(null);
         return;
       }
 
@@ -32,15 +32,12 @@ export function SampleAudioPlayer({
       setError(null);
 
       try {
-        const bytes = await voiceBankApiService.getSampleAudio(personId, sampleId);
-
-        if (cancelled) return;
-
-        setAudioBytes(bytes);
+        const url = await personSampleAudioUrl(personId, sampleId);
+        if (!cancelled) setAudioUrl(url);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
-          setAudioBytes(null);
+          setAudioUrl(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -56,7 +53,7 @@ export function SampleAudioPlayer({
 
   return (
     <AudioPlayerBase
-      audioBytes={audioBytes}
+      audioUrl={audioUrl}
       mimeType="audio/wav"
       loading={loading}
       error={error}

@@ -5,7 +5,10 @@ import { Pause, Play, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface AudioPlayerBaseProps {
-  audioBytes: Uint8Array | null;
+  /** Direct stream URL (preferred). Browser streams without full download. */
+  audioUrl?: string | null;
+  /** @deprecated Prefer audioUrl. Kept for local blob fallback. */
+  audioBytes?: Uint8Array | null;
   mimeType?: string;
   loading?: boolean;
   error?: string | null;
@@ -20,7 +23,8 @@ function formatTime(seconds: number): string {
 }
 
 export function AudioPlayerBase({
-  audioBytes,
+  audioUrl = null,
+  audioBytes = null,
   mimeType = 'audio/wav',
   loading = false,
   error = null,
@@ -31,10 +35,11 @@ export function AudioPlayerBase({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
-  // Create blob URL from bytes
+  // Blob fallback when only bytes are provided
   useEffect(() => {
-    if (!audioBytes) {
+    if (audioUrl || !audioBytes) {
       setBlobUrl(null);
       return;
     }
@@ -46,35 +51,48 @@ export function AudioPlayerBase({
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [audioBytes, mimeType]);
+  }, [audioUrl, audioBytes, mimeType]);
 
-  // Create and manage HTMLAudioElement
+  const src = audioUrl || blobUrl;
+
   useEffect(() => {
-    if (!blobUrl) {
+    if (!src) {
       setHtmlAudio(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setMediaError(null);
       return;
     }
 
-    const el = new Audio(blobUrl);
-    el.preload = 'auto';
+    const el = new Audio(src);
+    el.preload = 'metadata';
 
     const onTime = () => setCurrentTime(el.currentTime);
     const onMeta = () => setDuration(el.duration || 0);
     const onEnd = () => setIsPlaying(false);
+    const onErr = () => {
+      setMediaError('Failed to load audio');
+      setIsPlaying(false);
+    };
 
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);
     el.addEventListener('ended', onEnd);
+    el.addEventListener('error', onErr);
 
     setHtmlAudio(el);
+    setMediaError(null);
 
     return () => {
       el.pause();
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
       el.removeEventListener('ended', onEnd);
+      el.removeEventListener('error', onErr);
+      el.src = '';
     };
-  }, [blobUrl]);
+  }, [src]);
 
   const controls = useMemo(() => ({
     play: async () => {
@@ -93,13 +111,15 @@ export function AudioPlayerBase({
     },
   }), [htmlAudio]);
 
+  const displayError = error || mediaError;
+
   return (
     <div className={`flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md ${className || ''}`}>
       <Button
         type="button"
         variant="outline"
         size="sm"
-        disabled={loading || !!error || !blobUrl}
+        disabled={loading || !!displayError || !src}
         onClick={() => {
           if (isPlaying) controls.pause();
           else void controls.play();
@@ -130,9 +150,9 @@ export function AudioPlayerBase({
           <span>{formatTime(duration)}</span>
         </div>
       </div>
-      {error && (
-        <span className="text-xs text-red-600 shrink-0 max-w-[40%] truncate" title={error}>
-          {error}
+      {displayError && (
+        <span className="text-xs text-red-600 shrink-0 max-w-[40%] truncate" title={displayError}>
+          {displayError}
         </span>
       )}
     </div>

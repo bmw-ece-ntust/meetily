@@ -463,39 +463,6 @@ pub async fn list_voiceprints(
     }
 }
 
-/// Download meeting recording as bytes for playback.
-#[tauri::command]
-pub async fn get_meeting_recording(
-    meeting_id: String,
-    client: State<'_, Arc<RwLock<ApiClient>>>,
-) -> Result<CommandResult<Vec<u8>>, String> {
-    let client = client.read().await;
-    match client.get_recording(&meeting_id).await {
-        Ok(bytes) => Ok(CommandResult::success(bytes)),
-        Err(e) => Ok(CommandResult::error(format!(
-            "Failed to download recording: {}",
-            e
-        ))),
-    }
-}
-
-/// Download person sample audio as bytes for playback.
-#[tauri::command]
-pub async fn get_person_sample_audio(
-    person_id: String,
-    sample_id: String,
-    client: State<'_, Arc<RwLock<ApiClient>>>,
-) -> Result<CommandResult<Vec<u8>>, String> {
-    let client = client.read().await;
-    match client.get_person_sample_audio(&person_id, &sample_id).await {
-        Ok(bytes) => Ok(CommandResult::success(bytes)),
-        Err(e) => Ok(CommandResult::error(format!(
-            "Failed to download sample audio: {}",
-            e
-        ))),
-    }
-}
-
 #[tauri::command]
 pub async fn delete_meeting(
     id: String,

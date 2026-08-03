@@ -111,12 +111,4 @@ export const voiceBankApiService = {
       'Failed to identify speakers'
     );
   },
-
-  async getSampleAudio(personId: string, sampleId: string): Promise<Uint8Array> {
-    const bytes = await unwrap<number[]>(
-      invoke('get_person_sample_audio', { personId, sampleId }),
-      'Failed to get sample audio'
-    );
-    return new Uint8Array(bytes);
-  },
 };

@@ -593,8 +593,6 @@ pub fn run() {
             api_client::commands::delete_person_sample,
             api_client::commands::rebuild_person_voiceprint,
             api_client::commands::list_voiceprints,
-            api_client::commands::get_meeting_recording,
-            api_client::commands::get_person_sample_audio,
             api_client::commands::delete_meeting,
             api_client::commands::retranscribe_meeting,
             api_client::commands::get_transcript,
