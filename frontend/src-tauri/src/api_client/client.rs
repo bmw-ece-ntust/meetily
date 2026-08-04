@@ -161,15 +161,19 @@ impl ApiClient {
 
     /// Mark a meeting's minutes as certified (reviewed). When the meeting is
     /// linked to a Google Calendar event, the server emails the minutes to
-    /// the event attendees.
+    /// the event attendees. May generate the summary inline (LLM call), so
+    /// uses a long timeout.
     pub async fn certify_meeting(
         &self,
         id: &str,
         certified: bool,
     ) -> ApiResult<CertifyMeetingResponse> {
         let url = self.build_url(&format!("/meetings/{}/certify", id));
-        let builder = self
-            .client
+        let long_client = Client::builder()
+            .timeout(Duration::from_secs(600))
+            .build()
+            .map_err(|e| ApiError::NetworkError(e.to_string()))?;
+        let builder = long_client
             .patch(&url)
             .json(&serde_json::json!({ "certified": certified }));
         let builder = self.add_auth_header(builder);
@@ -752,7 +756,8 @@ impl ApiClient {
     }
 
     /// Manual minutes send with an explicit recipient list. The server owns
-    /// the minutes content and the Gmail credentials.
+    /// the minutes content and the Gmail credentials. May generate the
+    /// summary inline (LLM call), so uses a long timeout.
     pub async fn google_send_minutes(
         &self,
         meeting_id: &str,
@@ -760,8 +765,12 @@ impl ApiClient {
         subject: Option<String>,
     ) -> ApiResult<GoogleSendMinutesResponse> {
         let url = self.build_url(&format!("/google/meetings/{}/send-minutes", meeting_id));
+        let long_client = Client::builder()
+            .timeout(Duration::from_secs(600))
+            .build()
+            .map_err(|e| ApiError::NetworkError(e.to_string()))?;
         let builder = self
-            .add_auth_header(self.client.post(&url))
+            .add_auth_header(long_client.post(&url))
             .json(&serde_json::json!({
                 "recipients": recipients,
                 "subject": subject,
