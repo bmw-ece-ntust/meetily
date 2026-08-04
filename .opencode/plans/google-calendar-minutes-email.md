@@ -21,7 +21,7 @@ Feature: send minutes to meeting attendees pulled from Google Calendar.
 - [x] `GoogleSettings.tsx` — server status view, per-account auto-join toggle, connect/disconnect via server
 - [x] `SendMinutesDialog.tsx` — event info, attendee checkboxes, extra recipients, subject, already-sent state
 - [x] `SummaryPanel` — Send + Certify & Send buttons
-- [x] `docs/GOOGLE_CALENDAR_SETUP.md` — server-only OAuth guide
+- [x] ~~`docs/GOOGLE_CALENDAR_SETUP.md`~~ → moved to ai-meeting-agent `docs/` (server-only OAuth guide)
 
 ## Server endpoints consumed
 

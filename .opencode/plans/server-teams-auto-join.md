@@ -29,7 +29,7 @@ OAuth client.
 - [x] `PATCH /meetings/:id/certify` (`server/certify_handlers.rs`)
 - [x] On certify: attendees from linked event → gmail .md send → `send_records` (idempotent)
 - [x] Desktop: `certify_meeting` api_client command + "Certify & Send" button (SummaryPanel)
-- [x] `.env.example` + `docs/GOOGLE_CALENDAR_SETUP.md` server section
+- [x] `.env.example` + `docs/GOOGLE_CALENDAR_SETUP.md` server section (guide lives in ai-meeting-agent repo)
 
 ## Phase D — OAuth consolidation (server-only) ✅
 - [x] Desktop OAuth removed; server owns all credentials (meetily `0cd1ca6`)

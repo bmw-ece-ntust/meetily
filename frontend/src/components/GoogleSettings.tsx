@@ -127,7 +127,8 @@ export function GoogleSettings() {
         <p className="text-sm text-gray-500 mt-1">
           The server auto-joins today&apos;s Teams meetings and emails certified minutes to
           attendees. Google sign-in happens on the server — this app stores no Google credentials.
-          Setup: <code className="bg-gray-100 px-1 rounded">docs/GOOGLE_CALENDAR_SETUP.md</code>.
+          Setup guide lives in the ai-meeting-agent repo:{' '}
+          <code className="bg-gray-100 px-1 rounded">docs/GOOGLE_CALENDAR_SETUP.md</code>.
         </p>
       </div>
 
