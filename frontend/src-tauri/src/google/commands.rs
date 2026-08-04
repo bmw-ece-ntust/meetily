@@ -4,8 +4,8 @@
 //! credentials and tokens. The desktop holds nothing.
 
 use crate::api_client::types::{
-    GoogleConnectResponse, GoogleMeetingEventResponse, GoogleSendMinutesResponse,
-    GoogleStatusResponse,
+    GoogleConnectResponse, GoogleListedEvent, GoogleMeetingEventResponse,
+    GoogleSendMinutesResponse, GoogleStatusResponse,
 };
 use crate::state::AppState;
 use log::error as log_error;
@@ -109,6 +109,27 @@ pub async fn google_send_minutes(
     proxy(async move {
         client
             .google_send_minutes(&meeting_id, recipients, subject)
+            .await
+    })
+    .await
+}
+
+/// List calendar events across the server's connected accounts.
+#[tauri::command]
+pub async fn google_list_events(
+    days_before: Option<i64>,
+    days_after: Option<i64>,
+    all: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<CommandResult<Vec<GoogleListedEvent>>, String> {
+    let client = state.api_client.read().await.clone();
+    proxy(async move {
+        client
+            .google_list_events(
+                days_before.unwrap_or(7),
+                days_after.unwrap_or(7),
+                all.unwrap_or(false),
+            )
             .await
     })
     .await

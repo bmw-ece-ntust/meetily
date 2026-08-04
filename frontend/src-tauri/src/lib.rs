@@ -637,6 +637,7 @@ pub fn run() {
             google::commands::google_disconnect_account,
             google::commands::google_find_event,
             google::commands::google_send_minutes,
+            google::commands::google_list_events,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -455,6 +455,7 @@ const Sidebar: React.FC = () => {
     const isMeetingPage = pathname?.includes('/meeting-details');
     const isVoiceBankPage = pathname === '/voice-bank';
     const isSettingsPage = pathname === '/settings';
+    const isCalendarPage = pathname === '/calendar';
 
     return (
       <TooltipProvider>
@@ -539,6 +540,21 @@ const Sidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>Voice Bank</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => router.push('/calendar')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${isCalendarPage ? 'bg-gray-100' : 'hover:bg-gray-100'
+                  }`}
+              >
+                <Calendar className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Calendar</p>
             </TooltipContent>
           </Tooltip>
 

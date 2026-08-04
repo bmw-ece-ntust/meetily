@@ -147,6 +147,18 @@ pub struct GoogleSendMinutesResponse {
     pub outcome: String,
 }
 
+/// One row of the calendar events list (server `/google/events`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleListedEvent {
+    pub google_email: String,
+    pub event: GoogleCalendarEvent,
+    pub teams_url: Option<String>,
+    pub bot_id: Option<String>,
+    pub meeting_id: Option<String>,
+    pub dispatched_at: Option<String>,
+    pub minutes_sent: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateMeetingRequest {
     pub title: String,
