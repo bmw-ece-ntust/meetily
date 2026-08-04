@@ -31,6 +31,13 @@ OAuth client.
 - [x] Desktop: `certify_meeting` api_client command + "Certify & Send" button (SummaryPanel)
 - [x] `.env.example` + `docs/GOOGLE_CALENDAR_SETUP.md` server section
 
+## Phase D — OAuth consolidation (server-only) ✅
+- [x] Desktop OAuth removed; server owns all credentials (meetily `0cd1ca6`)
+- [x] `GET /google/meetings/:id/event` — link lookup, else search all accounts by time window, persist link
+- [x] `POST /google/meetings/:id/send-minutes` — manual send with explicit recipients; shared idempotency with certify
+- [x] `minutes_email.rs` shared helpers (`ensure_event_link`, `send_to_recipients`)
+- [x] Poll interval 300s → 60s
+
 ## Verify
 - [x] `cargo check` core+server clean; 7 google unit tests pass
 - [x] meetily `cargo check` + `tsc --noEmit` clean

@@ -1,30 +1,31 @@
-# Plan: Google Calendar → Email Minutes to Attendees
+# Plan: Google Calendar → Email Minutes to Attendees (desktop UI)
 
-Feature: after minutes generated, send minutes to meeting attendees pulled from Google Calendar.
+Feature: send minutes to meeting attendees pulled from Google Calendar.
+**OAuth lives entirely on ai-meeting-agent** — desktop is UI + thin proxy.
 
 ## Design decisions (from user)
 
-- Calendar: Google Calendar API
-- Send flow: review dialog first (never auto-send)
-- Minutes format: `.md` file attachment (short body intro)
-- Event matching: auto by recording time window, fallback to "no event found" state
-- OAuth: user creates Google Cloud OAuth client (Desktop type) — guide at `docs/GOOGLE_CALENDAR_SETUP.md`
+- Calendar: Google Calendar API, server-side per-user accounts
+- Manual send: review dialog first (never auto-send)
+- Minutes format: `.md` file attachment (server builds email from stored summary)
+- Event matching: auto by recording time window (server searches all connected accounts)
+- Desktop holds zero Google credentials (rework commit `0cd1ca6`)
 
 ## Tasks
 
-- [ ] Migration `20260803000000_add_google_config.sql` — `google_config` table (client_id, client_secret)
-- [ ] Backend `frontend/src-tauri/src/google/`:
-  - [ ] `config.rs` — load/save client credentials from SQLite
-  - [ ] `auth.rs` — OAuth2 loopback flow + PKCE, refresh token in macOS Keychain (`keyring`), access token cache + refresh
-  - [ ] `calendar.rs` — `events.list` on primary calendar around meeting time, extract attendee emails (dedupe, drop self via Gmail profile)
-  - [ ] `gmail.rs` — RFC 2822 MIME with `.md` attachment, `users.messages.send`
-  - [ ] `commands.rs` — `get/set_google_config`, `google_connect`, `google_disconnect`, `google_status`, `google_find_event`, `google_send_minutes`
-- [ ] Cargo deps: `keyring`, `sha2`
-- [ ] `lib.rs` — `pub mod google;` + register commands
-- [ ] Frontend `GoogleSettings.tsx` — credentials + connect/disconnect + status, added to `app/settings/page.tsx`
-- [ ] Frontend `SendMinutesDialog.tsx` — event info, attendee checkboxes, subject input, send
-- [ ] Wire dialog into `SummaryPanel` via `SummaryUpdaterButtonGroup` "Send" button; markdown from `summaryRef.getMarkdown()`
+- [x] ~~Desktop OAuth~~ → removed; server web-flow OAuth used instead
+- [x] Migration `20260803120000_drop_google_config.sql` — drop `google_config`
+- [x] `google/commands.rs` thin proxies via api_client: `get_google_status`, `google_connect_url`, `google_set_auto_join`, `google_disconnect_account`, `google_find_event`, `google_send_minutes`
+- [x] api_client Google endpoint bindings
+- [x] `utils::open_external_url` (open server OAuth URL in browser)
+- [x] `GoogleSettings.tsx` — server status view, per-account auto-join toggle, connect/disconnect via server
+- [x] `SendMinutesDialog.tsx` — event info, attendee checkboxes, extra recipients, subject, already-sent state
+- [x] `SummaryPanel` — Send + Certify & Send buttons
+- [x] `docs/GOOGLE_CALENDAR_SETUP.md` — server-only OAuth guide
 
-## Trigger
+## Server endpoints consumed
 
-Manual: "Send to attendees" button appears next to Copy/Save when summary exists. Not auto-popup on `job-completed`.
+- `GET /google/status` · `GET /google/connect`
+- `PATCH|DELETE /google/accounts/:email`
+- `GET /google/meetings/:id/event` · `POST /google/meetings/:id/send-minutes`
+- `PATCH /meetings/:id/certify`
