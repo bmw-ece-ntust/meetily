@@ -735,6 +735,22 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
+    /// List calendar events across the server's connected accounts.
+    pub async fn google_list_events(
+        &self,
+        days_before: i64,
+        days_after: i64,
+        all: bool,
+    ) -> ApiResult<Vec<GoogleListedEvent>> {
+        let url = self.build_url(&format!(
+            "/google/events?days_before={}&days_after={}&all={}",
+            days_before, days_after, all
+        ));
+        let builder = self.add_auth_header(self.client.get(&url));
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
     /// Manual minutes send with an explicit recipient list. The server owns
     /// the minutes content and the Gmail credentials.
     pub async fn google_send_minutes(
