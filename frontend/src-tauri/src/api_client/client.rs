@@ -159,6 +159,25 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
+    /// Mark a meeting's minutes as certified (reviewed). When the meeting is
+    /// linked to a Google Calendar event, the server emails the minutes to
+    /// the event attendees.
+    pub async fn certify_meeting(
+        &self,
+        id: &str,
+        certified: bool,
+    ) -> ApiResult<CertifyMeetingResponse> {
+        let url = self.build_url(&format!("/meetings/{}/certify", id));
+        let builder = self
+            .client
+            .patch(&url)
+            .json(&serde_json::json!({ "certified": certified }));
+        let builder = self.add_auth_header(builder);
+        let response = builder.send().await?;
+
+        self.handle_response(response).await
+    }
+
     pub async fn rename_speakers(
         &self,
         id: &str,
@@ -661,6 +680,77 @@ impl ApiClient {
         let builder = self.add_auth_header(builder);
         let response = builder.send().await?;
 
+        self.handle_response(response).await
+    }
+
+    // ========================================================================
+    // Google Calendar/Gmail (server-owned OAuth)
+    // ========================================================================
+
+    pub async fn google_status(&self) -> ApiResult<GoogleStatusResponse> {
+        let url = self.build_url("/google/status");
+        let builder = self.add_auth_header(self.client.get(&url));
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Returns the Google consent URL to open in a browser. The OAuth flow
+    /// completes entirely on the server (public /google/callback).
+    pub async fn google_connect_url(&self) -> ApiResult<GoogleConnectResponse> {
+        let url = self.build_url("/google/connect");
+        let builder = self.add_auth_header(self.client.get(&url));
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    pub async fn google_set_auto_join(
+        &self,
+        email: &str,
+        auto_join: bool,
+    ) -> ApiResult<serde_json::Value> {
+        let url = self.build_url(&format!("/google/accounts/{}", email));
+        let builder = self
+            .add_auth_header(self.client.patch(&url))
+            .json(&serde_json::json!({ "auto_join": auto_join }));
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    pub async fn google_disconnect_account(&self, email: &str) -> ApiResult<serde_json::Value> {
+        let url = self.build_url(&format!("/google/accounts/{}", email));
+        let builder = self.add_auth_header(self.client.delete(&url));
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Resolve the calendar event for a meeting (linked, or found by time
+    /// window across the server's connected accounts).
+    pub async fn google_meeting_event(
+        &self,
+        meeting_id: &str,
+    ) -> ApiResult<GoogleMeetingEventResponse> {
+        let url = self.build_url(&format!("/google/meetings/{}/event", meeting_id));
+        let builder = self.add_auth_header(self.client.get(&url));
+        let response = builder.send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Manual minutes send with an explicit recipient list. The server owns
+    /// the minutes content and the Gmail credentials.
+    pub async fn google_send_minutes(
+        &self,
+        meeting_id: &str,
+        recipients: Vec<String>,
+        subject: Option<String>,
+    ) -> ApiResult<GoogleSendMinutesResponse> {
+        let url = self.build_url(&format!("/google/meetings/{}/send-minutes", meeting_id));
+        let builder = self
+            .add_auth_header(self.client.post(&url))
+            .json(&serde_json::json!({
+                "recipients": recipients,
+                "subject": subject,
+            }));
+        let response = builder.send().await?;
         self.handle_response(response).await
     }
 }

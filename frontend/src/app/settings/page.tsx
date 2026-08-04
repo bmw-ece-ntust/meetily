@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ApiConfigSettings } from '@/components/ApiConfigSettings';
 import { GitHubExportSettings } from '@/components/GitHubExportSettings';
+import { GoogleSettings } from '@/components/GoogleSettings';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto p-8 pt-2">
           <ApiConfigSettings />
+          <GoogleSettings />
           <GitHubExportSettings />
         </div>
       </div>

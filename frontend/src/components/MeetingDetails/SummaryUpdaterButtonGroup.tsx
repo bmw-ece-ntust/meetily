@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Save } from 'lucide-react';
+import { BadgeCheck, Copy, Mail, Save } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 
 interface SummaryUpdaterButtonGroupProps {
@@ -11,6 +11,9 @@ interface SummaryUpdaterButtonGroupProps {
   onSave?: () => Promise<void> | void;
   isDirty?: boolean;
   isSaving?: boolean;
+  onSendMinutes?: () => void;
+  onCertify?: () => Promise<void> | void;
+  isCertifying?: boolean;
 }
 
 export function SummaryUpdaterButtonGroup({
@@ -19,6 +22,9 @@ export function SummaryUpdaterButtonGroup({
   onSave,
   isDirty = false,
   isSaving = false,
+  onSendMinutes,
+  onCertify,
+  isCertifying = false,
 }: SummaryUpdaterButtonGroupProps) {
   return (
     <ButtonGroup>
@@ -52,6 +58,38 @@ export function SummaryUpdaterButtonGroup({
         <Copy />
         <span className="hidden lg:inline">Copy</span>
       </Button>
+      {onSendMinutes && (
+        <Button
+          variant="outline"
+          size="sm"
+          title="Send minutes to calendar attendees"
+          onClick={() => {
+            Analytics.trackButtonClick('send_minutes_email', 'meeting_details');
+            onSendMinutes();
+          }}
+          disabled={!hasSummary}
+          className="cursor-pointer"
+        >
+          <Mail />
+          <span className="hidden lg:inline">Send</span>
+        </Button>
+      )}
+      {onCertify && (
+        <Button
+          variant="outline"
+          size="sm"
+          title="Certify minutes and email them to calendar attendees"
+          onClick={() => {
+            Analytics.trackButtonClick('certify_minutes', 'meeting_details');
+            void onCertify();
+          }}
+          disabled={!hasSummary || isCertifying}
+          className="cursor-pointer"
+        >
+          <BadgeCheck />
+          <span className="hidden lg:inline">{isCertifying ? 'Certifying…' : 'Certify & Send'}</span>
+        </Button>
+      )}
     </ButtonGroup>
   );
 }

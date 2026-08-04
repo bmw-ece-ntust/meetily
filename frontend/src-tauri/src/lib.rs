@@ -29,6 +29,7 @@ pub mod console_utils;
 pub mod database;
 pub mod media_protocol;
 pub mod github_export;
+pub mod google;
 pub mod notifications;
 pub mod onboarding;
 pub mod state;
@@ -567,6 +568,7 @@ pub fn run() {
             // System settings commands
             #[cfg(target_os = "macos")]
             utils::open_system_settings,
+            utils::open_external_url,
             // Import audio commands
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
@@ -581,6 +583,7 @@ pub fn run() {
             api_client::commands::list_meetings,
             api_client::commands::get_meeting,
             api_client::commands::update_meeting,
+            api_client::commands::certify_meeting,
             api_client::commands::rename_meeting_speakers,
             api_client::commands::identify_meeting_speakers,
             api_client::commands::clear_meeting_speaker_identification,
@@ -627,6 +630,13 @@ pub fn run() {
             summary::commands::api_get_summary,
             summary::commands::api_process_transcript,
             summary::commands::api_cancel_summary,
+            // Google Calendar/Gmail commands (proxied to ai-meeting-agent)
+            google::commands::get_google_status,
+            google::commands::google_connect_url,
+            google::commands::google_set_auto_join,
+            google::commands::google_disconnect_account,
+            google::commands::google_find_event,
+            google::commands::google_send_minutes,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -80,6 +80,73 @@ pub struct ListMeetingsResponse {
     pub offset: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CertifyMeetingResponse {
+    pub meeting_id: String,
+    pub certified: bool,
+    /// Email outcome: "sent:<n>", "skipped:<reason>", or "failed:<error>".
+    pub email: String,
+}
+
+// ============================================================================
+// Google Calendar/Gmail (server-owned OAuth; desktop is a thin proxy)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleAccountInfo {
+    pub google_email: String,
+    pub scopes: String,
+    pub auto_join: bool,
+    pub connected_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleStatusResponse {
+    pub enabled: bool,
+    pub configured: bool,
+    pub accounts: Vec<GoogleAccountInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleConnectResponse {
+    pub auth_url: String,
+    pub redirect_uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleEventAttendee {
+    pub email: String,
+    pub display_name: Option<String>,
+    pub organizer: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleCalendarEvent {
+    pub id: String,
+    pub title: String,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    #[serde(default)]
+    pub attendees: Vec<GoogleEventAttendee>,
+    #[serde(default)]
+    pub join_urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleMeetingEventResponse {
+    pub linked: bool,
+    pub google_email: Option<String>,
+    pub event: Option<GoogleCalendarEvent>,
+    pub already_sent: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleSendMinutesResponse {
+    pub meeting_id: String,
+    /// "sent:<n>", "skipped:<reason>", or "failed:<error>".
+    pub outcome: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateMeetingRequest {
     pub title: String,
