@@ -22,4 +22,35 @@ pub async fn open_system_settings(preference_pane: String) -> Result<(), String>
         .map_err(|e| format!("Failed to open system settings: {}", e))?;
 
     Ok(())
-} 
+}
+
+/// Opens an http(s) URL in the system browser (used for server-hosted OAuth).
+#[tauri::command]
+pub async fn open_external_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Only http(s) URLs are allowed".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("rundll32");
+        c.args(["url.dll,FileProtocolHandler", &url]);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open browser: {}", e))
+}

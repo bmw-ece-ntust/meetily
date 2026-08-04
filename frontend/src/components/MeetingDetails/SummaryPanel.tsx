@@ -443,10 +443,6 @@ export function SummaryPanel({
         open={sendMinutesOpen}
         meetingId={meeting.id}
         meetingTitle={meetingTitle || meeting.title || ''}
-        getMarkdown={async () => {
-          if (!summaryRef.current) throw new Error('Summary not ready');
-          return summaryRef.current.getMarkdown();
-        }}
         onClose={() => setSendMinutesOpen(false)}
       />
     </div>

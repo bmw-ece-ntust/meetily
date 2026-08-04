@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Calendar, Loader2, Mail, MailWarning } from 'lucide-react';
+import { Calendar, CheckCircle, Loader2, Mail, MailWarning } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -19,36 +19,34 @@ type CommandResult<T> = {
 };
 
 type GoogleStatus = {
+  enabled: boolean;
   configured: boolean;
-  connected: boolean;
-  email?: string | null;
-  client_id?: string | null;
+  accounts: Array<{ google_email: string }>;
 };
 
-type CalendarEventAttendee = {
+type EventAttendee = {
   email: string;
   display_name?: string | null;
   organizer: boolean;
 };
 
-type CalendarEventMatch = {
-  id: string;
-  title: string;
-  start?: string | null;
-  end?: string | null;
-  attendees: CalendarEventAttendee[];
-};
-
-type FindEventResponse = {
-  event?: CalendarEventMatch | null;
-  self_email?: string | null;
+type MeetingEventResponse = {
+  linked: boolean;
+  google_email?: string | null;
+  event?: {
+    id: string;
+    title: string;
+    start?: string | null;
+    end?: string | null;
+    attendees: EventAttendee[];
+  } | null;
+  already_sent: boolean;
 };
 
 interface SendMinutesDialogProps {
   open: boolean;
   meetingId: string;
   meetingTitle: string;
-  getMarkdown: () => Promise<string>;
   onClose: () => void;
 }
 
@@ -56,40 +54,40 @@ export function SendMinutesDialog({
   open,
   meetingId,
   meetingTitle,
-  getMarkdown,
   onClose,
 }: SendMinutesDialogProps) {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState<GoogleStatus | null>(null);
-  const [event, setEvent] = useState<CalendarEventMatch | null>(null);
+  const [accounts, setAccounts] = useState<string[]>([]);
+  const [result, setResult] = useState<MeetingEventResponse | null>(null);
   const [manualEmails, setManualEmails] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [subject, setSubject] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    setEvent(null);
+    setResult(null);
     setSelected(new Set());
     try {
       const statusResult = await invoke<CommandResult<GoogleStatus>>('get_google_status');
       if (!statusResult.success || !statusResult.data) {
         throw new Error(statusResult.error || 'Failed to load Google status');
       }
-      setStatus(statusResult.data);
-      if (!statusResult.data.connected) return;
+      const emails = statusResult.data.accounts.map((a) => a.google_email);
+      setAccounts(emails);
+      if (!statusResult.data.enabled || emails.length === 0) return;
 
-      const findResult = await invoke<CommandResult<FindEventResponse>>('google_find_event', {
+      const findResult = await invoke<CommandResult<MeetingEventResponse>>('google_find_event', {
         meetingId,
       });
-      if (!findResult.success) {
+      if (!findResult.success || !findResult.data) {
         throw new Error(findResult.error || 'Failed to search calendar');
       }
-      const found = findResult.data?.event ?? null;
-      setEvent(found);
-      if (found) {
-        setSelected(new Set(found.attendees.map((a) => a.email)));
-        setSubject(`Minutes: ${found.title}`);
+      const found = findResult.data;
+      setResult(found);
+      if (found.event) {
+        setSelected(new Set(found.event.attendees.map((a) => a.email)));
+        setSubject(`Minutes: ${found.event.title}`);
       } else {
         setSubject(`Minutes: ${meetingTitle || 'Meeting'}`);
       }
@@ -128,16 +126,31 @@ export function SendMinutesDialog({
 
     setSending(true);
     try {
-      const markdown = await getMarkdown();
-      const result = await invoke<CommandResult<{ message_id: string }>>(
+      const sendResult = await invoke<CommandResult<{ outcome: string }>>(
         'google_send_minutes',
-        { meetingId, recipients, subject: subject.trim() || 'Meeting minutes', markdown }
+        {
+          meetingId,
+          recipients,
+          subject: subject.trim() || null,
+        }
       );
-      if (!result.success) {
-        throw new Error(result.error || 'Send failed');
+      if (!sendResult.success || !sendResult.data) {
+        throw new Error(sendResult.error || 'Send failed');
       }
-      toast.success(`Minutes sent to ${recipients.length} recipient(s)`);
-      onClose();
+      const outcome = sendResult.data.outcome;
+      if (outcome.startsWith('sent:')) {
+        toast.success(`Minutes sent to ${outcome.slice(5)} recipient(s)`);
+        onClose();
+      } else if (outcome.startsWith('failed:')) {
+        throw new Error(outcome.slice(7));
+      } else {
+        const reasons: Record<string, string> = {
+          'skipped:already_sent': 'Minutes were already emailed for this meeting.',
+          'skipped:no_calendar_event': 'No calendar event found for this meeting.',
+          'skipped:empty_summary': 'Summary is empty — nothing to send.',
+        };
+        toast.info('Not sent', { description: reasons[outcome] || outcome });
+      }
     } catch (error) {
       toast.error('Failed to send minutes', {
         description: error instanceof Error ? error.message : String(error),
@@ -159,6 +172,9 @@ export function SendMinutesDialog({
     }
   };
 
+  const event = result?.event ?? null;
+  const alreadySent = result?.already_sent ?? false;
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="sm:max-w-[520px]">
@@ -176,18 +192,25 @@ export function SendMinutesDialog({
               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
               Checking your Google Calendar…
             </div>
-          ) : !status?.connected ? (
+          ) : accounts.length === 0 ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
               <MailWarning className="h-4 w-4 mt-0.5 shrink-0" />
               <div>
-                <p className="font-medium">Google account not connected</p>
+                <p className="font-medium">No Google account connected on the server</p>
                 <p className="mt-1">
-                  Connect your Google account in Settings → Google Calendar &amp; Gmail first.
+                  Connect one in Settings → Google Calendar &amp; Gmail first.
                 </p>
               </div>
             </div>
           ) : (
             <>
+              {alreadySent && (
+                <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  Minutes for this meeting were already emailed.
+                </div>
+              )}
+
               <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
                 {event ? (
                   <div className="flex items-start gap-2">
@@ -198,6 +221,11 @@ export function SendMinutesDialog({
                         <p className="text-gray-500 text-xs mt-0.5">
                           {formatTime(event.start)}
                           {event.end ? ` – ${formatTime(event.end)}` : ''}
+                        </p>
+                      )}
+                      {result?.google_email && (
+                        <p className="text-gray-400 text-xs mt-0.5">
+                          via {result.google_email}&apos;s calendar
                         </p>
                       )}
                     </div>
@@ -268,8 +296,7 @@ export function SendMinutesDialog({
               </div>
 
               <p className="text-xs text-gray-500">
-                The minutes are attached as a Markdown (.md) file.
-                {status.email ? ` Sent from ${status.email}.` : ''}
+                The server emails the minutes as a Markdown (.md) attachment.
               </p>
             </>
           )}
@@ -286,7 +313,13 @@ export function SendMinutesDialog({
           <button
             type="button"
             onClick={() => void handleSend()}
-            disabled={sending || loading || !status?.connected || selected.size === 0 && !manualEmails.trim()}
+            disabled={
+              sending ||
+              loading ||
+              accounts.length === 0 ||
+              alreadySent ||
+              (selected.size === 0 && !manualEmails.trim())
+            }
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {sending && <Loader2 className="w-4 h-4 animate-spin" />}

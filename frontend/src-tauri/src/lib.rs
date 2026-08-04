@@ -568,6 +568,7 @@ pub fn run() {
             // System settings commands
             #[cfg(target_os = "macos")]
             utils::open_system_settings,
+            utils::open_external_url,
             // Import audio commands
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
@@ -629,11 +630,11 @@ pub fn run() {
             summary::commands::api_get_summary,
             summary::commands::api_process_transcript,
             summary::commands::api_cancel_summary,
-            // Google Calendar/Gmail commands
+            // Google Calendar/Gmail commands (proxied to ai-meeting-agent)
             google::commands::get_google_status,
-            google::commands::set_google_config,
-            google::commands::google_connect,
-            google::commands::google_disconnect,
+            google::commands::google_connect_url,
+            google::commands::google_set_auto_join,
+            google::commands::google_disconnect_account,
             google::commands::google_find_event,
             google::commands::google_send_minutes,
         ])

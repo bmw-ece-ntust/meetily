@@ -105,10 +105,6 @@ ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", bran
 
 sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "chrono"] }
 
-# Google OAuth (Calendar/Gmail integration)
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
-sha2 = "0.10"
-
 # Common Tauri configuration
 tauri = { version = "2.6.2", features = [ "macos-private-api", "protocol-asset", "tray-icon"] }
 tauri-plugin-fs = "2.4.5"
