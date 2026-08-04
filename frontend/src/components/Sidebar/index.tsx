@@ -40,6 +40,7 @@ interface SidebarItem {
 const Sidebar: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const isCalendarPage = pathname === '/calendar';
   const {
     currentMeeting,
     setCurrentMeeting,
@@ -455,7 +456,6 @@ const Sidebar: React.FC = () => {
     const isMeetingPage = pathname?.includes('/meeting-details');
     const isVoiceBankPage = pathname === '/voice-bank';
     const isSettingsPage = pathname === '/settings';
-    const isCalendarPage = pathname === '/calendar';
 
     return (
       <TooltipProvider>
@@ -754,6 +754,13 @@ const Sidebar: React.FC = () => {
                 >
                   <Users className="w-4 h-4 mr-2" />
                   <span>Voice Bank</span>
+                </div>
+                <div
+                  onClick={() => router.push('/calendar')}
+                  className={`p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-2 rounded-lg cursor-pointer ${isCalendarPage ? 'bg-gray-100' : ''}`}
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  <span>Calendar</span>
                 </div>
               </>
             )}
